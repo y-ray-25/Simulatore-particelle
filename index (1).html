@@ -1,0 +1,1079 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Campo Particellare</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+/* Layout: campo particellare a schermo intero; pannelli ancorati a sinistra, HUD e comandi sovrapposti. */
+:root{
+  --bg:#06080b;
+  --panel:rgba(8,11,15,.86);
+  --panel-2:#0f151c;
+  --line:#1c2530;
+  --line-strong:#2b3846;
+  --fg:#e8edf2;
+  --muted:#8793a1;
+  --accent:#79c0ff;
+  --accent-ink:#04121f;
+  --danger:#ff9a8f;
+  --good:#6ee7a8;
+  --warn:#f5c26b;
+  --sans:"IBM Plex Sans","Segoe UI",system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 var(--sans);overflow:hidden;-webkit-text-size-adjust:100%}
+button,input{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+#gl,#ov{position:fixed;inset:0;width:100%;height:100%;display:block}
+#ov{pointer-events:none;z-index:6}
+
+/* ---------- Pagine iniziali ---------- */
+.menu{position:fixed;inset:0;z-index:4;display:flex;overflow-y:auto;
+  padding-block:max(20px,env(safe-area-inset-top)) max(20px,env(safe-area-inset-bottom));
+  padding-left:max(16px,env(safe-area-inset-left),5vw);padding-right:max(16px,env(safe-area-inset-right));
+  background:linear-gradient(90deg,rgba(6,8,11,.78) 0%,rgba(6,8,11,.35) 55%,rgba(6,8,11,0) 100%)}
+.panel{width:min(460px,100%);margin-block:auto;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:28px 28px 24px;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+.eyebrow{font:500 11px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin:0 0 14px}
+h1{font-weight:300;font-size:clamp(30px,5vw,40px);line-height:1.1;letter-spacing:-.01em;margin:0 0 12px;text-wrap:balance}
+.lead{color:var(--muted);margin:0 0 24px;font-size:14.5px;max-width:52ch}
+.group{display:flex;flex-direction:column;gap:8px;margin-bottom:20px}
+.label{font:500 11px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.seg{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.opt{appearance:none;background:var(--panel-2);border:1px solid var(--line-strong);border-radius:6px;padding:11px 14px;text-align:left;cursor:pointer;display:flex;flex-direction:column;gap:2px;min-height:56px;transition:border-color .15s,background .15s}
+.opt:hover{border-color:#41546a}
+.opt b{font-weight:500}
+.opt small{font:400 12px var(--mono);color:var(--muted);font-variant-numeric:tabular-nums}
+.opt[aria-pressed="true"]{border-color:var(--accent);background:rgba(121,192,255,.1)}
+.opt[aria-pressed="true"] small{color:var(--accent)}
+.num{width:100%;height:50px;background:#05070a;border:1px solid var(--line-strong);border-radius:6px;padding:0 14px;font:500 18px var(--mono);font-variant-numeric:tabular-nums;color:var(--fg)}
+.num:focus{border-color:var(--accent);outline:none;box-shadow:0 0 0 3px rgba(121,192,255,.18)}
+.hint{font-size:12.5px;color:var(--muted);margin:0}
+.hint.warn{color:var(--danger)}
+.start{appearance:none;width:100%;height:56px;border:0;border-radius:6px;background:var(--accent);color:var(--accent-ink);font-weight:600;font-size:16px;letter-spacing:.04em;cursor:pointer;margin-top:6px;transition:filter .15s}
+.start:hover{filter:brightness(1.08)}
+.start:disabled{filter:grayscale(.5) brightness(.7);cursor:progress}
+.note{font-size:12.5px;color:var(--muted);margin:14px 0 0;line-height:1.55}
+.status{min-height:18px;font:12px/1.5 var(--mono);color:var(--muted);margin:12px 0 0}
+.status.err{color:var(--danger)}
+.back{appearance:none;background:none;border:0;padding:0 0 14px;color:var(--muted);cursor:pointer;font:500 12px var(--mono);letter-spacing:.06em}
+.back:hover{color:var(--accent)}
+
+/* Scelta della modalità */
+.modes-list{display:flex;flex-direction:column;gap:10px;margin-bottom:6px}
+.mode{appearance:none;text-align:left;background:var(--panel-2);border:1px solid var(--line-strong);border-radius:6px;padding:16px 18px;cursor:pointer;display:flex;flex-direction:column;gap:6px;transition:border-color .15s,background .15s}
+.mode:hover{border-color:var(--accent);background:rgba(121,192,255,.07)}
+.mode .tag{font:500 10.5px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--accent)}
+.mode b{font-size:19px;font-weight:500}
+.mode span.d{font-size:13.5px;color:var(--muted);line-height:1.45}
+
+/* ---------- Comandi in alto a destra ---------- */
+.tools{position:fixed;z-index:20;top:max(16px,env(safe-area-inset-top));right:max(16px,env(safe-area-inset-right));display:flex;gap:8px}
+.tbtn{appearance:none;height:44px;min-width:44px;padding:0 14px;display:inline-flex;align-items:center;justify-content:center;gap:8px;background:rgba(8,11,15,.78);border:1px solid var(--line-strong);border-radius:6px;cursor:pointer;font-size:13.5px;font-weight:500;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.tbtn:hover{border-color:var(--accent)}
+.tbtn svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.tbtn.icon{padding:0}
+
+/* ---------- Vista telecamera ---------- */
+.camview{position:fixed;inset:0;z-index:5;background:#000}
+.camview video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+.dock{position:fixed;z-index:12;left:max(16px,env(safe-area-inset-left));right:max(16px,env(safe-area-inset-right));bottom:max(16px,env(safe-area-inset-bottom));max-width:520px;margin-inline:auto;background:rgba(6,8,11,.84);border:1px solid var(--line-strong);border-radius:8px;padding:14px 16px;display:flex;flex-direction:column;gap:10px;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+.dline{display:flex;gap:10px;align-items:center;font:12.5px/1.45 var(--mono)}
+.dline.err{color:var(--danger)}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--muted);flex:none}
+.dot.on{background:var(--good)}.dot.warn{background:var(--warn)}.dot.bad{background:var(--danger)}
+.dform{display:flex;gap:8px}
+.dform .num{height:46px;text-transform:uppercase;letter-spacing:.22em;text-align:center}
+
+/* ---------- Simulatore ---------- */
+.hud{position:fixed;z-index:10;top:max(16px,env(safe-area-inset-top));left:max(16px,env(safe-area-inset-left));min-width:236px;max-width:min(320px,calc(100% - 32px));background:rgba(6,8,11,.72);border:1px solid var(--line);border-radius:6px;padding:10px 14px;font:12px/1.75 var(--mono);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.hud dl{display:grid;grid-template-columns:auto 1fr;column-gap:20px;margin:0}
+.hud dt{color:var(--muted);text-transform:uppercase;letter-spacing:.08em;font-size:11px}
+.hud dd{margin:0;text-align:right;font-variant-numeric:tabular-nums;min-width:0;overflow-wrap:anywhere}
+.hud .err{color:var(--danger)}
+.hud .ok{color:var(--accent)}
+.hudmsg{margin:8px 0 0;padding-top:8px;border-top:1px solid var(--line);color:var(--danger);font:12px/1.5 var(--sans)}
+.hudmsg button{margin-top:8px;height:34px;padding:0 12px;background:transparent;border:1px solid var(--line-strong);border-radius:6px;cursor:pointer;font-size:13px}
+.hudmsg button:hover{border-color:var(--accent)}
+.legend{position:fixed;z-index:10;left:max(16px,env(safe-area-inset-left));bottom:max(16px,env(safe-area-inset-bottom));max-width:min(440px,calc(100% - 200px));font:11.5px/1.7 var(--mono);color:var(--muted)}
+.cam{position:fixed;z-index:10;right:max(16px,env(safe-area-inset-right));bottom:max(16px,env(safe-area-inset-bottom));width:168px;aspect-ratio:4/3;border:1px solid var(--line-strong);border-radius:6px;overflow:hidden;background:#000;transition:opacity .2s}
+.cam.off{opacity:0;pointer-events:none}
+.cam video{width:100%;height:100%;object-fit:cover;display:block}
+.cam span{position:absolute;left:8px;top:6px;font:500 10px var(--mono);letter-spacing:.12em;color:#cfe3f5;text-shadow:0 1px 2px #000}
+
+/* Scheda di abbinamento (sul PC) */
+.pairwrap{position:fixed;inset:0;z-index:9;display:flex;align-items:center;justify-content:center;padding:16px;pointer-events:none}
+.pair{pointer-events:auto;width:min(440px,100%);max-height:100%;overflow-y:auto;background:var(--panel);border:1px solid var(--line-strong);border-radius:8px;padding:22px;display:flex;flex-direction:column;gap:14px;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+.pair h2{margin:0;font-size:18px;font-weight:500}
+.pairtop{display:flex;flex-wrap:wrap;gap:18px;align-items:center}
+#qr{background:#fff;padding:8px;border-radius:4px;line-height:0;flex:none;min-width:60px;min-height:60px}
+#qr img,#qr canvas{display:block;max-width:100%}
+.codebox{display:flex;flex-direction:column;gap:6px}
+.code{font:500 32px/1 var(--mono);letter-spacing:.2em;user-select:all}
+.url{font:11.5px/1.5 var(--mono);color:var(--muted);overflow-wrap:anywhere;user-select:all}
+.pair p{margin:0;font-size:13.5px;color:var(--muted)}
+
+/* ---------- Impostazioni ---------- */
+.backdrop{position:fixed;inset:0;z-index:50;background:rgba(2,3,5,.66);display:flex;align-items:center;justify-content:center;padding:16px}
+.sheet{width:min(440px,100%);max-height:100%;overflow-y:auto;background:#0b1015;border:1px solid var(--line-strong);border-radius:8px;padding:22px 24px}
+.sheet h2{margin:0 0 4px;font-size:18px;font-weight:500}
+.sheet p{margin:0 0 18px;color:var(--muted);font-size:13px}
+.row{display:grid;grid-template-columns:1fr auto;align-items:center;gap:6px 14px;padding:12px 0;border-top:1px solid var(--line)}
+.row label{font-size:14px}
+.row output{font:12.5px var(--mono);color:var(--accent);min-width:3.4em;text-align:right;font-variant-numeric:tabular-nums}
+.row input[type=range]{grid-column:1/-1;width:100%;accent-color:var(--accent)}
+.row.check{grid-template-columns:1fr auto}
+.row input[type=checkbox]{width:20px;height:20px;accent-color:var(--accent)}
+.actions{display:flex;gap:8px;margin-top:18px;border-top:1px solid var(--line);padding-top:18px}
+.btn{appearance:none;height:42px;padding:0 16px;background:transparent;border:1px solid var(--line-strong);border-radius:6px;cursor:pointer;font-size:14px}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
+.actions .primary{margin-left:auto}
+
+[hidden]{display:none!important}
+@media (max-width:560px){
+  .panel{padding:22px 18px 20px}
+  .hud{top:calc(max(16px,env(safe-area-inset-top)) + 56px)}
+  .cam{width:112px}
+  .legend{max-width:calc(100% - 150px);font-size:10.5px}
+  .menu{background:linear-gradient(180deg,rgba(6,8,11,.5),rgba(6,8,11,.2));padding-top:calc(max(16px,env(safe-area-inset-top)) + 60px)}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<canvas id="gl"></canvas>
+
+<!-- Vista telecamera (modalità Telecamera) -->
+<section class="camview" id="camview" hidden>
+  <video id="vfull" playsinline muted autoplay></video>
+</section>
+<canvas id="ov"></canvas>
+
+<div class="dock" id="dock" hidden>
+  <div class="dline" id="dLine"><span class="dot" id="dDot"></span><span id="dText"></span></div>
+  <form class="dform" id="dForm" autocomplete="off">
+    <input class="num" id="dCode" type="text" maxlength="5" placeholder="CODICE" autocapitalize="characters" autocomplete="off" spellcheck="false" aria-label="Codice di collegamento">
+    <button class="btn primary" type="submit">Collega</button>
+  </form>
+  <button class="btn" id="dDisc" type="button" hidden>Scollega</button>
+  <button class="btn" id="dRetry" type="button" hidden>Riprova la fotocamera</button>
+</div>
+
+<!-- Comandi -->
+<div class="tools">
+  <button class="tbtn" id="btnFlip" type="button" hidden>Frontale</button>
+  <button class="tbtn" id="btnMenu" type="button" hidden>Menu</button>
+  <button class="tbtn icon" id="btnSettings" type="button" aria-label="Impostazioni" title="Impostazioni">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 14.6a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.11-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.56-1.11 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.01A1.7 1.7 0 0 0 10 3.09V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.01A1.7 1.7 0 0 0 20.91 10H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.56 1.03z"/></svg>
+  </button>
+</div>
+
+<!-- Scelta della modalità -->
+<main class="menu" id="modes">
+  <section class="panel" aria-labelledby="title">
+    <p class="eyebrow">Simulatore · Tracciamento mani</p>
+    <h1 id="title">Campo Particellare</h1>
+    <p class="lead">Scegli come usare questo dispositivo. Servono due ruoli: una telecamera che riprende le mani e uno schermo che mostra le particelle.</p>
+    <div class="modes-list">
+      <button class="mode" id="modeCam" type="button">
+        <span class="tag">Consigliato sul telefono</span>
+        <b>Telecamera</b>
+        <span class="d">Apre la fotocamera a schermo intero, riconosce le mani e invia allo schermo solo le loro coordinate.</span>
+      </button>
+      <button class="mode" id="modeScreen" type="button">
+        <span class="tag">Consigliato sul PC</span>
+        <b>Schermo</b>
+        <span class="d">Mostra le particelle. Chiede numero di particelle e mani, poi avvia la simulazione.</span>
+      </button>
+    </div>
+    <p class="note">Il video non lascia mai il telefono: lo schermo riceve soltanto le coordinate delle mani, con un collegamento diretto tra i due dispositivi.</p>
+  </section>
+</main>
+
+<!-- Domande della modalità Schermo -->
+<main class="menu" id="menu" hidden>
+  <section class="panel" aria-labelledby="title2">
+    <button class="back" id="backModes" type="button">‹ Cambia modalità</button>
+    <p class="eyebrow">Modalità Schermo</p>
+    <h1 id="title2">Impostazioni della simulazione</h1>
+
+    <div class="group">
+      <span class="label" id="lblDev">Dispositivo</span>
+      <div class="seg" role="group" aria-labelledby="lblDev">
+        <button class="opt" type="button" data-device="pc" aria-pressed="false"><b>PC</b><small id="cPc"></small></button>
+        <button class="opt" type="button" data-device="phone" aria-pressed="false"><b>Telefono</b><small id="cPhone"></small></button>
+      </div>
+    </div>
+
+    <div class="group">
+      <label class="label" for="count">Numero di particelle</label>
+      <input class="num" id="count" type="text" inputmode="numeric" autocomplete="off" spellcheck="false" aria-describedby="countHint">
+      <p class="hint" id="countHint">Intervallo consentito: da 500 a 200.000.</p>
+    </div>
+
+    <div class="group">
+      <span class="label" id="lblHands">Mani da tracciare</span>
+      <div class="seg" role="group" aria-labelledby="lblHands">
+        <button class="opt" type="button" data-hands="1" aria-pressed="false"><b>1 mano</b><small>una sorgente</small></button>
+        <button class="opt" type="button" data-hands="2" aria-pressed="false"><b>2 mani</b><small>due sorgenti</small></button>
+      </div>
+    </div>
+
+    <div class="group">
+      <span class="label" id="lblSrc">Sorgente delle mani</span>
+      <div class="seg" role="group" aria-labelledby="lblSrc">
+        <button class="opt" type="button" data-source="phone" aria-pressed="false"><b>Telefono</b><small>telecamera collegata</small></button>
+        <button class="opt" type="button" data-source="local" aria-pressed="false"><b>Questo dispositivo</b><small>fotocamera integrata</small></button>
+      </div>
+    </div>
+
+    <button class="start" id="start" type="button">Inizia</button>
+    <p class="status" id="menuStatus" role="status" aria-live="polite"></p>
+    <p class="note" id="menuNote"></p>
+  </section>
+</main>
+
+<!-- Simulatore -->
+<aside class="hud" id="hud" hidden aria-label="Dati del simulatore">
+  <dl>
+    <dt>Particelle</dt><dd id="hN">0</dd>
+    <dt>Frequenza</dt><dd id="hFps">0 fps</dd>
+    <dt>Mani rilevate</dt><dd id="hHands">0 / 1</dd>
+    <dt>Apertura</dt><dd id="hOpen">n.d.</dd>
+    <dt>Tracciamento</dt><dd id="hTrack">in attesa</dd>
+  </dl>
+  <div class="hudmsg" id="hudMsg" hidden><span id="hudMsgText"></span><br><button type="button" id="btnRetry">Riprova</button></div>
+</aside>
+<p class="legend" id="legend" hidden>Mano aperta: campo espanso. Pugno: campo compatto. Apertura rapida: onda d'urto. Nessuna mano: particelle disperse.</p>
+<div class="cam off" id="cam" hidden><video id="video" playsinline muted></video><span>FOTOCAMERA</span></div>
+
+<div class="pairwrap" id="pairwrap" hidden>
+  <section class="pair" aria-labelledby="pairTitle">
+    <h2 id="pairTitle">Collega il telefono</h2>
+    <div class="pairtop">
+      <div id="qr" aria-hidden="true"></div>
+      <div class="codebox">
+        <span class="label">Codice</span>
+        <span class="code" id="pairCode">-----</span>
+      </div>
+    </div>
+    <p>Sul telefono apri questo indirizzo, tocca <b>Telecamera</b> e inquadra il codice QR, oppure scrivi il codice.</p>
+    <span class="url" id="pairUrl"></span>
+    <div class="dline" id="pairLine"><span class="dot warn" id="pairDot"></span><span id="pairText">Preparazione del collegamento…</span></div>
+  </section>
+</div>
+
+<!-- Impostazioni -->
+<div class="backdrop" id="settings" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="setTitle">
+    <h2 id="setTitle">Impostazioni</h2>
+    <p>Le modifiche vengono applicate subito e salvate su questo dispositivo.</p>
+
+    <div class="row"><label for="s-size">Dimensione dei punti</label><output id="o-size"></output><input type="range" id="s-size" data-key="size" min="0.8" max="4" step="0.1"></div>
+    <div class="row"><label for="s-bright">Luminosità</label><output id="o-bright"></output><input type="range" id="s-bright" data-key="bright" min="0.3" max="2" step="0.05"></div>
+    <div class="row"><label for="s-trail">Persistenza della scia</label><output id="o-trail"></output><input type="range" id="s-trail" data-key="trail" min="0" max="0.9" step="0.05"></div>
+    <div class="row"><label for="s-field">Raggio del campo</label><output id="o-field"></output><input type="range" id="s-field" data-key="field" min="0.5" max="1.6" step="0.05"></div>
+    <div class="row check"><label for="s-preview">Anteprima della fotocamera (sorgente locale)</label><input type="checkbox" id="s-preview" data-key="preview"></div>
+    <div class="row check"><label for="s-skeleton">Mostra scheletro delle mani</label><input type="checkbox" id="s-skeleton" data-key="skeleton"></div>
+    <div class="row check"><label for="s-mirror">Specchia i movimenti</label><input type="checkbox" id="s-mirror" data-key="mirror"></div>
+
+    <div class="actions">
+      <button class="btn" type="button" id="reset">Ripristina</button>
+      <button class="btn primary" type="button" id="closeSettings">Chiudi</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+"use strict";
+
+/* ====================================================================
+   Utilità e stato
+   ==================================================================== */
+const $ = (s) => document.querySelector(s);
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const rnd = (v, n) => { const k = 10 ** n; return Math.round(v * k) / k; };
+const fmt = (n) => Math.round(n).toLocaleString("it-IT");
+const store = {
+  get(k, d) { try { const v = localStorage.getItem("cp." + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem("cp." + k, JSON.stringify(v)); } catch (e) { /* storage non disponibile */ } }
+};
+
+const COUNTS = { pc: 30000, phone: 8000 };
+const MIN_N = 500, MAX_N = 200000, MENU_N = 8000;
+const DEFAULTS = { size: 1.8, bright: 1, trail: 0.55, field: 1, preview: true, skeleton: false, mirror: true };
+const settings = Object.assign({}, DEFAULTS, store.get("settings", {}));
+const PEER_OPTS = window.CPF_PEER_OPTS || {};   // opzionale: server di segnalazione PeerJS proprio
+
+const isPhone = matchMedia("(pointer:coarse)").matches && Math.min(screen.width, screen.height) < 900;
+const saved = store.get("config", null);
+const state = {
+  device: saved ? saved.device : (isPhone ? "phone" : "pc"),
+  count: saved ? clamp(saved.count | 0, MIN_N, MAX_N) : (isPhone ? COUNTS.phone : COUNTS.pc),
+  hands: saved ? (saved.hands === 2 ? 2 : 1) : 1,
+  source: saved && saved.source === "local" ? "local" : "phone",
+  mode: "modes"   // modes | menu | sim | camera
+};
+const saveConfig = () => store.set("config", { device: state.device, count: state.count, hands: state.hands, source: state.source });
+
+/* ====================================================================
+   Campo di particelle (WebGL + fisica su CPU)
+   ==================================================================== */
+const VS = `
+attribute vec3 a_pos; attribute float a_sp;
+uniform float u_aspect, u_size, u_bright;
+varying float v_a; varying vec3 v_c;
+void main(){
+  float sc = 1.0 / (1.0 - a_pos.z * 0.45);
+  gl_Position = vec4(a_pos.x / u_aspect * sc, a_pos.y * sc, 0.0, 1.0);
+  gl_PointSize = max(1.0, u_size * sc);
+  float s = clamp(a_sp * 0.35, 0.0, 1.0);
+  v_a = u_bright * (0.5 + 0.9 * s) * clamp(sc, 0.6, 1.6);
+  v_c = mix(vec3(0.42, 0.72, 1.0), vec3(1.0, 0.98, 0.95), s);
+}`;
+const FS = `
+precision mediump float;
+varying float v_a; varying vec3 v_c;
+void main(){
+  float r = length(gl_PointCoord - 0.5) * 2.0;
+  float a = 1.0 - smoothstep(0.0, 1.0, r);
+  a *= a;
+  gl_FragColor = vec4(v_c * a * v_a, 1.0);
+}`;
+const FVS = `attribute vec2 a_p; void main(){ gl_Position = vec4(a_p, 0.0, 1.0); }`;
+const FFS = `precision mediump float; uniform float u_fade; void main(){ gl_FragColor = vec4(0.0, 0.0, 0.0, u_fade); }`;
+
+function link(gl, vs, fs) {
+  const mk = (type, src) => {
+    const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+    return s;
+  };
+  const p = gl.createProgram();
+  gl.attachShader(p, mk(gl.VERTEX_SHADER, vs));
+  gl.attachShader(p, mk(gl.FRAGMENT_SHADER, fs));
+  gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+  return p;
+}
+
+class Field {
+  constructor(canvas) {
+    const gl = this.gl = canvas.getContext("webgl", { antialias: false, alpha: false, preserveDrawingBuffer: true, powerPreference: "high-performance" });
+    if (!gl) throw new Error("WebGL non disponibile");
+    this.canvas = canvas;
+    this.prog = link(gl, VS, FS);
+    this.fprog = link(gl, FVS, FFS);
+    this.loc = {
+      pos: gl.getAttribLocation(this.prog, "a_pos"), sp: gl.getAttribLocation(this.prog, "a_sp"),
+      aspect: gl.getUniformLocation(this.prog, "u_aspect"), size: gl.getUniformLocation(this.prog, "u_size"),
+      bright: gl.getUniformLocation(this.prog, "u_bright")
+    };
+    this.floc = { p: gl.getAttribLocation(this.fprog, "a_p"), fade: gl.getUniformLocation(this.fprog, "u_fade") };
+    this.buf = gl.createBuffer();
+    this.quad = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.quad);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+    this.n = 0; this.aspect = 1; this.dpr = 1;
+    this.M = [new Float32Array(9), new Float32Array(9)];
+    this.resize();
+  }
+  resize() {
+    const dpr = this.dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const w = innerWidth, h = innerHeight;
+    this.canvas.width = Math.round(w * dpr); this.canvas.height = Math.round(h * dpr);
+    this.aspect = w / h;
+    this.gl.viewport(0, 0, this.canvas.width, this.canvas.height);
+    this.gl.clearColor(0, 0, 0, 1); this.gl.clear(this.gl.COLOR_BUFFER_BIT);
+  }
+  setCount(n) {
+    const gl = this.gl; this.n = n;
+    this.pos = new Float32Array(n * 4);
+    this.vel = new Float32Array(n * 3);
+    this.home = new Float32Array(n * 3);
+    this.dir = new Float32Array(n * 3);
+    this.lay = new Float32Array(n);
+    this.ph = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      const i3 = i * 3, i4 = i * 4;
+      this.home[i3] = Math.random() * 2 - 1;
+      this.home[i3 + 1] = Math.random() * 2 - 1;
+      this.home[i3 + 2] = (Math.random() * 2 - 1) * 0.8;
+      const u = Math.random() * 2 - 1, a = Math.random() * 6.2832, q = Math.sqrt(1 - u * u);
+      this.dir[i3] = q * Math.cos(a); this.dir[i3 + 1] = u; this.dir[i3 + 2] = q * Math.sin(a);
+      this.lay[i] = Math.cbrt(Math.random());
+      this.ph[i] = Math.random();
+      this.pos[i4] = this.home[i3] * this.aspect; this.pos[i4 + 1] = this.home[i3 + 1]; this.pos[i4 + 2] = this.home[i3 + 2];
+    }
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.buf);
+    gl.bufferData(gl.ARRAY_BUFFER, this.pos.byteLength, gl.DYNAMIC_DRAW);
+  }
+  step(dt, t, slots, two) {
+    const N = this.n, P = this.pos, V = this.vel, H = this.home, D = this.dir, L = this.lay, PH = this.ph, asp = this.aspect;
+    const KF = 0.9, KH = 15, DF = 1.4, DH = 5.2, JIT = 0.35;
+    const w = [0, 0], CX = [0, 0], CY = [0, 0], CZ = [0, 0], CA = [0, 0], CB = [0, 0], RR = [0, 0], DMP = [0, 0], IMP = [0, 0];
+    for (let s = 0; s < 2; s++) {
+      const sl = slots[s], c = Math.cos(sl.theta), si = Math.sin(sl.theta), cp = Math.cos(sl.phi), sp = Math.sin(sl.phi), m = this.M[s];
+      m[0] = c; m[1] = si * sp; m[2] = si * cp; m[3] = 0; m[4] = cp; m[5] = -sp; m[6] = -si; m[7] = c * sp; m[8] = c * cp;
+      w[s] = sl.w; CX[s] = sl.x; CY[s] = sl.y; CZ[s] = sl.z;
+      const o = sl.open;
+      CA[s] = (1 - o) + 0.18 * o; CB[s] = 0.82 * o; RR[s] = sl.R;
+      DMP[s] = Math.exp(-(DF + (DH - DF) * sl.w) * dt);
+      IMP[s] = sl.impulse; sl.impulse = 0;
+    }
+    for (let i = 0; i < N; i++) {
+      const s = two ? (i & 1) : 0, ws = w[s], i3 = i * 3, i4 = i * 4, ph = PH[i];
+      const ox = Math.sin(t * 0.31 + ph * 6.2832), oy = Math.cos(t * 0.23 + ph * 17.0);
+      let tx = H[i3] * asp + ox * 0.09, ty = H[i3 + 1] + oy * 0.09, tz = H[i3 + 2] + ox * oy * 0.09;
+      const dx = D[i3], dy = D[i3 + 1], dz = D[i3 + 2];
+      if (ws > 0.001) {
+        const m = this.M[s], r = (CA[s] * L[i] + CB[s]) * RR[s];
+        const hx = CX[s] + (m[0] * dx + m[1] * dy + m[2] * dz) * r;
+        const hy = CY[s] + (m[3] * dx + m[4] * dy + m[5] * dz) * r;
+        const hz = CZ[s] + (m[6] * dx + m[7] * dy + m[8] * dz) * r * 0.6;
+        tx += (hx - tx) * ws; ty += (hy - ty) * ws; tz += (hz - tz) * ws;
+      }
+      const k = KF + (KH * (0.7 + 0.6 * ph) - KF) * ws;
+      let vx = V[i3], vy = V[i3 + 1], vz = V[i3 + 2];
+      if (IMP[s] > 0) { const f = 2.6 * (0.4 + ph); vx += dx * f; vy += dy * f; vz += dz * f; }
+      vx += (tx - P[i4]) * k * dt; vy += (ty - P[i4 + 1]) * k * dt; vz += (tz - P[i4 + 2]) * k * dt;
+      const df = DMP[s];
+      vx *= df; vy *= df; vz *= df;
+      if (ws > 0.05) {
+        const j = JIT * ws * dt;
+        vx += (Math.random() - 0.5) * j; vy += (Math.random() - 0.5) * j; vz += (Math.random() - 0.5) * j;
+      }
+      P[i4] += vx * dt; P[i4 + 1] += vy * dt; P[i4 + 2] += vz * dt;
+      P[i4 + 3] = Math.sqrt(vx * vx + vy * vy + vz * vz);
+      V[i3] = vx; V[i3 + 1] = vy; V[i3 + 2] = vz;
+    }
+  }
+  draw(st) {
+    const gl = this.gl, L = this.loc, F = this.floc;
+    gl.enable(gl.BLEND);
+    gl.useProgram(this.fprog);
+    gl.disableVertexAttribArray(L.pos); gl.disableVertexAttribArray(L.sp);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.quad);
+    gl.enableVertexAttribArray(F.p); gl.vertexAttribPointer(F.p, 2, gl.FLOAT, false, 0, 0);
+    gl.uniform1f(F.fade, 1 - st.trail);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    gl.disableVertexAttribArray(F.p);
+    gl.useProgram(this.prog);
+    gl.blendFunc(gl.ONE, gl.ONE);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.buf);
+    gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.pos);
+    gl.enableVertexAttribArray(L.pos); gl.vertexAttribPointer(L.pos, 3, gl.FLOAT, false, 16, 0);
+    gl.enableVertexAttribArray(L.sp); gl.vertexAttribPointer(L.sp, 1, gl.FLOAT, false, 16, 12);
+    gl.uniform1f(L.aspect, this.aspect);
+    gl.uniform1f(L.size, st.size * this.dpr);
+    gl.uniform1f(L.bright, st.bright);
+    gl.drawArrays(gl.POINTS, 0, this.n);
+  }
+}
+
+/* ====================================================================
+   Sorgenti di controllo (mani) → slot che guidano le particelle
+   ==================================================================== */
+const newSlot = (idx) => ({ idx, active: false, seen: 0, seenOnce: false, x: 0, y: 0, z: 0, open: 0, openSlow: 0, lastBurst: 0, w: 0, R: 0.2, theta: 0, phi: 0.5, impulse: 0 });
+const slots = [newSlot(0), newSlot(1)];
+const unit = () => Math.min(1, field.aspect * 1.25);
+
+function applyDet(s, d, now, fresh) {
+  if (fresh || !s.active) { s.x = d.x; s.y = d.y; s.z = d.z; s.open = d.open; s.openSlow = d.open; }
+  else {
+    s.x += (d.x - s.x) * 0.6; s.y += (d.y - s.y) * 0.6; s.z += (d.z - s.z) * 0.4;
+    s.open += (d.open - s.open) * 0.4;
+    s.openSlow += (s.open - s.openSlow) * 0.06;
+    if (s.open - s.openSlow > 0.32 && now - s.lastBurst > 700) { s.impulse = 1; s.lastBurst = now; }
+  }
+  s.seen = now; s.seenOnce = true; s.active = true;
+}
+
+function assign(dets, now) {
+  const cand = slots.slice(0, state.hands);
+  const pairs = [];
+  dets.forEach((d, di) => cand.forEach((s, si) => { if (s.active) pairs.push({ di, si, dist: Math.hypot(d.x - s.x, d.y - s.y) }); }));
+  pairs.sort((a, b) => a.dist - b.dist);
+  const dUsed = new Set(), sUsed = new Set();
+  for (const p of pairs) {
+    if (dUsed.has(p.di) || sUsed.has(p.si) || p.dist > 1.2) continue;
+    applyDet(cand[p.si], dets[p.di], now, false); dUsed.add(p.di); sUsed.add(p.si);
+  }
+  dets.forEach((d, di) => {
+    if (dUsed.has(di)) return;
+    const f = cand.findIndex((s, si) => !sUsed.has(si) && !s.active);
+    if (f >= 0) { applyDet(cand[f], d, now, true); sUsed.add(f); }
+  });
+}
+
+function updateSlots(dt, now) {
+  const U = unit(), t = now / 1000;
+  slots.forEach((s) => {
+    s.active = s.seenOnce && (now - s.seen) < 250;
+    const target = s.active ? 1 : 0;
+    s.w += (target - s.w) * (1 - Math.exp(-dt * (s.active ? 7 : 2.2)));
+    if (!s.active && s.w < 0.002) s.w = 0;
+    s.R = U * settings.field * (0.15 + 0.40 * s.open);
+    s.theta += dt * (1.8 - 1.2 * s.open);
+    s.phi = 0.5 + 0.25 * Math.sin(t * 0.4 + s.idx * 2.0);
+  });
+}
+
+/* Mano grezza (coordinate normalizzate dell'immagine) → posizione nella scena */
+function toDet(h) {
+  const z = clamp((h.p - 0.10) / 0.25, 0, 1) * 1.2 - 0.6;
+  const sc = 1 / (1 - z * 0.45);
+  const mx = settings.mirror ? 1 - h.cx : h.cx;
+  return { x: ((mx * 2 - 1) * field.aspect) / sc, y: (1 - h.cy * 2) / sc, z, open: h.o };
+}
+
+/* ====================================================================
+   Riconoscimento delle mani (MediaPipe Hand Landmarker)
+   ==================================================================== */
+const VER = "0.10.14";
+const MP_URL = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${VER}/vision_bundle.mjs`;
+const MP_WASM = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${VER}/wasm`;
+const MP_MODEL = "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task";
+const BONES = [[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[5,9],[9,10],[10,11],[11,12],[9,13],[13,14],[14,15],[15,16],[13,17],[17,18],[18,19],[19,20],[0,17]];
+
+const mp = { mod: null, lmk: null };
+async function ensureLandmarker(numHands) {
+  if (!mp.lmk) {
+    mp.mod = mp.mod || await import(MP_URL);
+    const fileset = await mp.mod.FilesetResolver.forVisionTasks(MP_WASM);
+    const opts = {
+      baseOptions: { modelAssetPath: MP_MODEL, delegate: "GPU" }, runningMode: "VIDEO", numHands,
+      minHandDetectionConfidence: 0.5, minHandPresenceConfidence: 0.5, minTrackingConfidence: 0.5
+    };
+    try { mp.lmk = await mp.mod.HandLandmarker.createFromOptions(fileset, opts); }
+    catch (e) { opts.baseOptions.delegate = "CPU"; mp.lmk = await mp.mod.HandLandmarker.createFromOptions(fileset, opts); }
+  } else {
+    await mp.lmk.setOptions({ numHands });
+  }
+}
+
+function describeError(e) {
+  const n = e && e.name;
+  if (n === "NotAllowedError" || n === "SecurityError") return "Accesso alla fotocamera negato. Consenti l'accesso dalle impostazioni del browser.";
+  if (n === "NotFoundError" || n === "OverconstrainedError") return "Nessuna fotocamera trovata su questo dispositivo.";
+  if (n === "NotReadableError") return "La fotocamera è in uso da un'altra applicazione.";
+  if (e && e.code === "nomedia") return "La fotocamera richiede una pagina HTTPS o localhost. Un file salvato sul telefono non basta.";
+  return "Impossibile caricare il modello di tracciamento. Verifica la connessione a Internet.";
+}
+
+async function openStream(videoEl, facing) {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { const e = new Error("nomedia"); e.code = "nomedia"; throw e; }
+  const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: facing }, width: { ideal: 640 }, height: { ideal: 480 } }, audio: false });
+  videoEl.srcObject = stream;
+  await videoEl.play();
+  return stream;
+}
+function stopStream(stream, videoEl) {
+  if (stream) stream.getTracks().forEach((t) => t.stop());
+  if (videoEl) videoEl.srcObject = null;
+}
+
+/* Risultato del modello → mani con centro, apertura e dimensione del palmo */
+function extract(res, ar) {
+  const out = [];
+  for (const lm of ((res && res.landmarks) || [])) {
+    let cx = 0, cy = 0;
+    [0, 5, 9, 13, 17].forEach((k) => { cx += lm[k].x; cy += lm[k].y; });
+    cx /= 5; cy /= 5;
+    const palm = Math.hypot((lm[9].x - lm[0].x) * ar, lm[9].y - lm[0].y) || 1e-3;
+    let r = 0;
+    [8, 12, 16, 20].forEach((k) => { r += Math.hypot((lm[k].x - lm[0].x) * ar, lm[k].y - lm[0].y); });
+    r /= 4 * palm;
+    out.push({ cx, cy, p: palm, o: clamp((r - 1.1) / 0.55, 0, 1), lm: lm.map((q) => ({ x: q.x, y: q.y })) });
+  }
+  return out;
+}
+const pack = (h) => ({ cx: rnd(h.cx, 4), cy: rnd(h.cy, 4), p: rnd(h.p, 4), o: rnd(h.o, 3), l: h.lm.flatMap((q) => [rnd(q.x, 3), rnd(q.y, 3)]) });
+function unpack(h) {
+  const l = [];
+  if (Array.isArray(h.l) && h.l.length === 42) for (let i = 0; i < 42; i += 2) l.push({ x: +h.l[i] || 0, y: +h.l[i + 1] || 0 });
+  return { cx: clamp(+h.cx || 0, 0, 1), cy: clamp(+h.cy || 0, 0, 1), p: clamp(+h.p || 0.15, 0.01, 1), o: clamp(+h.o || 0, 0, 1), lm: l };
+}
+
+/* Overlay scheletro */
+const ov = $("#ov"), octx = ov.getContext("2d");
+function sizeOverlay() { ov.width = innerWidth; ov.height = innerHeight; }
+function clearOverlay() { octx.clearRect(0, 0, ov.width, ov.height); }
+function drawHands(hands, map) {
+  if (!hands.length) return;
+  octx.strokeStyle = "rgba(121,192,255,.75)"; octx.lineWidth = 1.6; octx.beginPath();
+  hands.forEach((h) => {
+    if (!h.lm || h.lm.length < 21) return;
+    BONES.forEach(([a, b]) => { const A = map(h.lm[a]), B = map(h.lm[b]); octx.moveTo(A[0], A[1]); octx.lineTo(B[0], B[1]); });
+  });
+  octx.stroke();
+  octx.fillStyle = "#e8f4ff";
+  hands.forEach((h) => (h.lm || []).forEach((p) => { const A = map(p); octx.beginPath(); octx.arc(A[0], A[1], 2.4, 0, 6.2832); octx.fill(); }));
+}
+
+/* Mani ricevute (locali o dal telefono) → scena */
+function processHands(hands, now) {
+  clearOverlay();
+  if (settings.skeleton) drawHands(hands, (p) => [(settings.mirror ? 1 - p.x : p.x) * ov.width, p.y * ov.height]);
+  assign(hands.map(toDet), now);
+}
+
+/* ====================================================================
+   Sorgente locale (fotocamera di questo dispositivo, modalità Schermo)
+   ==================================================================== */
+const video = $("#video");
+const tracking = { ready: false, status: "idle", msg: "", stream: null, lastVT: -1 };
+
+async function startTracking(report) {
+  tracking.status = "loading"; tracking.msg = "";
+  try {
+    report && report("Richiesta accesso alla fotocamera…");
+    tracking.stream = await openStream(video, "user");
+    report && report("Caricamento del modello di tracciamento…");
+    await ensureLandmarker(state.hands);
+    tracking.ready = true; tracking.status = "ready";
+    return null;
+  } catch (e) {
+    console.error(e);
+    stopLocal();
+    tracking.status = "error"; tracking.msg = describeError(e);
+    return tracking.msg;
+  }
+}
+function stopLocal() {
+  stopStream(tracking.stream, video);
+  tracking.stream = null; tracking.ready = false; tracking.lastVT = -1;
+  clearOverlay();
+}
+
+/* ====================================================================
+   Collegamento telefono → schermo (WebRTC diretto tramite PeerJS)
+   ==================================================================== */
+const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+const newCode = () => Array.from({ length: 5 }, () => ALPHABET[Math.floor(Math.random() * ALPHABET.length)]).join("");
+
+/* --- Lato schermo (PC) --- */
+const pairing = { peer: null, conn: null, code: "", connected: false, status: "idle", err: "" };
+
+function pairUrl() { return location.href.split("#")[0] + "#c=" + pairing.code; }
+
+function renderQR() {
+  const box = $("#qr"); box.textContent = "";
+  if (typeof QRCode === "undefined") { box.style.display = "none"; return; }
+  box.style.display = "";
+  try { new QRCode(box, { text: pairUrl(), width: 168, height: 168, colorDark: "#000000", colorLight: "#ffffff", correctLevel: QRCode.CorrectLevel.M }); }
+  catch (e) { box.style.display = "none"; }
+}
+
+function updatePair() {
+  const show = state.mode === "sim" && state.source === "phone" && !pairing.connected;
+  $("#pairwrap").hidden = !show;
+  $("#pairCode").textContent = pairing.code || "-----";
+  $("#pairUrl").textContent = pairing.code ? (location.protocol === "file:" ? "Per collegare il telefono pubblica la pagina su GitHub Pages: da un file locale il telefono non può raggiungerla." : pairUrl()) : "";
+  const dot = $("#pairDot"), txt = $("#pairText"), line = $("#pairLine");
+  line.classList.toggle("err", pairing.status === "error");
+  if (pairing.status === "error") { dot.className = "dot bad"; txt.textContent = pairing.err; }
+  else if (pairing.status === "waiting") { dot.className = "dot warn"; txt.textContent = "In attesa del telefono…"; }
+  else { dot.className = "dot warn"; txt.textContent = "Preparazione del collegamento…"; }
+}
+
+function startPairing() {
+  stopPairing();
+  if (typeof Peer === "undefined") {
+    pairing.status = "error"; pairing.err = "Servizio di collegamento non raggiungibile. Controlla la connessione a Internet.";
+    updatePair(); return;
+  }
+  pairing.code = newCode(); pairing.status = "starting"; pairing.err = "";
+  renderQR(); updatePair();
+  const peer = pairing.peer = new Peer("cpf-" + pairing.code, PEER_OPTS);
+  peer.on("open", () => { if (pairing.peer === peer) { pairing.status = "waiting"; updatePair(); } });
+  peer.on("connection", (conn) => {
+    if (pairing.conn && pairing.conn.open) { conn.close(); return; }
+    pairing.conn = conn;
+    conn.on("open", () => { pairing.connected = true; try { conn.send({ t: "hello", hands: state.hands }); } catch (e) { /* ignora */ } updatePair(); });
+    conn.on("data", onRemoteData);
+    conn.on("close", () => { if (pairing.conn === conn) { pairing.conn = null; pairing.connected = false; updatePair(); } });
+    conn.on("error", () => { if (pairing.conn === conn) { pairing.conn = null; pairing.connected = false; updatePair(); } });
+  });
+  peer.on("disconnected", () => { try { if (!peer.destroyed) peer.reconnect(); } catch (e) { /* ignora */ } });
+  peer.on("error", (err) => {
+    if (pairing.peer !== peer) return;
+    if (err && err.type === "unavailable-id") { startPairing(); return; }
+    pairing.status = "error";
+    pairing.err = err && err.type === "network" || err && err.type === "server-error" || err && err.type === "socket-error" || err && err.type === "socket-closed"
+      ? "Server di collegamento non raggiungibile. Controlla la connessione a Internet."
+      : "Errore di collegamento" + (err && err.type ? " (" + err.type + ")" : "") + ".";
+    updatePair();
+  });
+}
+function stopPairing() {
+  const { peer, conn } = pairing;
+  pairing.peer = null; pairing.conn = null; pairing.connected = false; pairing.status = "idle";
+  try { conn && conn.close(); } catch (e) { /* ignora */ }
+  try { peer && peer.destroy(); } catch (e) { /* ignora */ }
+}
+function onRemoteData(msg) {
+  if (state.mode !== "sim" || !msg || msg.t !== "h" || !Array.isArray(msg.h)) return;
+  processHands(msg.h.slice(0, 2).map(unpack), performance.now());
+}
+
+/* --- Lato telecamera (telefono) --- */
+const cam = { facing: "user", stream: null, peer: null, conn: null, code: "", link: "idle", err: "", modelReady: false, modelErr: "", camErr: "", lastVT: -1, n: 0, lastScan: 0, retryT: 0, wake: null, detector: null, dockT: 0 };
+const vfull = $("#vfull");
+
+function dockUpdate() {
+  const dot = $("#dDot"), text = $("#dText"), line = $("#dLine");
+  const connected = cam.link === "connected";
+  let cls = "dot", msg = "", bad = false;
+  if (cam.camErr) { cls = "dot bad"; msg = cam.camErr; bad = true; }
+  else if (cam.modelErr) { cls = "dot bad"; msg = cam.modelErr; bad = true; }
+  else if (cam.link === "connected") { cls = "dot on"; msg = "Collegato allo schermo · " + cam.n + (cam.n === 1 ? " mano rilevata" : " mani rilevate"); }
+  else if (cam.link === "connecting") { cls = "dot warn"; msg = "Collegamento in corso…"; }
+  else if (cam.link === "lost") { cls = "dot warn"; msg = "Collegamento perso. Nuovo tentativo…"; }
+  else if (cam.link === "notfound") { cls = "dot bad"; msg = "Codice non trovato. Sul PC scegli Schermo e premi Inizia, poi inserisci il codice mostrato."; bad = true; }
+  else if (cam.link === "error") { cls = "dot bad"; msg = cam.err || "Errore di collegamento."; bad = true; }
+  else if (!cam.modelReady) { cls = "dot warn"; msg = "Caricamento del modello di tracciamento…"; }
+  else { cls = "dot"; msg = "Inserisci il codice mostrato sullo schermo, oppure inquadra il codice QR."; }
+  dot.className = cls; text.textContent = msg; line.classList.toggle("err", bad);
+  $("#dForm").hidden = connected || !!cam.camErr;
+  $("#dDisc").hidden = !connected;
+  $("#dRetry").hidden = !cam.camErr;
+}
+
+async function startCamStream() {
+  cam.camErr = "";
+  try {
+    stopStream(cam.stream, vfull);
+    cam.stream = await openStream(vfull, cam.facing);
+    vfull.style.transform = cam.facing === "user" ? "scaleX(-1)" : "none";
+    cam.lastVT = -1;
+  } catch (e) { console.error(e); cam.camErr = describeError(e); }
+  dockUpdate();
+}
+
+async function enterCamera(code) {
+  setMode("camera");
+  cam.modelReady = false; cam.modelErr = ""; cam.link = "idle"; cam.n = 0;
+  dockUpdate();
+  try { navigator.wakeLock && navigator.wakeLock.request("screen").then((w) => { cam.wake = w; }).catch(() => {}); } catch (e) { /* ignora */ }
+  if ("BarcodeDetector" in window) { try { cam.detector = new BarcodeDetector({ formats: ["qr_code"] }); } catch (e) { cam.detector = null; } }
+  const streamP = startCamStream();
+  ensureLandmarker(1).then(() => { cam.modelReady = true; dockUpdate(); }).catch((e) => { console.error(e); cam.modelErr = describeError(e); dockUpdate(); });
+  if (code) connectTo(code);
+  await streamP;
+}
+
+function disconnectCam() {
+  clearTimeout(cam.retryT);
+  const { peer, conn } = cam;
+  cam.peer = null; cam.conn = null;
+  try { conn && conn.close(); } catch (e) { /* ignora */ }
+  try { peer && peer.destroy(); } catch (e) { /* ignora */ }
+}
+
+function connectTo(raw) {
+  const code = String(raw || "").trim().toUpperCase();
+  if (!/^[A-Z0-9]{5}$/.test(code)) { cam.link = "error"; cam.err = "Codice non valido: servono 5 caratteri."; dockUpdate(); return; }
+  disconnectCam();
+  cam.code = code; cam.link = "connecting"; cam.err = ""; dockUpdate();
+  if (typeof Peer === "undefined") { cam.link = "error"; cam.err = "Servizio di collegamento non raggiungibile. Controlla la connessione a Internet."; dockUpdate(); return; }
+  const peer = cam.peer = new Peer(PEER_OPTS);
+  const retry = () => { clearTimeout(cam.retryT); cam.retryT = setTimeout(() => { if (state.mode === "camera" && cam.code && cam.link === "lost") connectTo(cam.code); }, 2000); };
+  peer.on("open", () => {
+    if (cam.peer !== peer) return;
+    const conn = cam.conn = peer.connect("cpf-" + code, { serialization: "json", reliable: false });
+    conn.on("open", () => { if (cam.conn === conn) { cam.link = "connected"; dockUpdate(); } });
+    conn.on("data", (m) => {
+      if (m && m.t === "hello" && mp.lmk) mp.lmk.setOptions({ numHands: m.hands === 2 ? 2 : 1 }).catch(() => {});
+    });
+    conn.on("close", () => { if (cam.conn === conn) { cam.link = "lost"; cam.conn = null; dockUpdate(); retry(); } });
+    conn.on("error", () => { if (cam.conn === conn) { cam.link = "lost"; cam.conn = null; dockUpdate(); retry(); } });
+  });
+  peer.on("error", (err) => {
+    if (cam.peer !== peer) return;
+    const t = err && err.type;
+    if (t === "peer-unavailable") { cam.link = "notfound"; }
+    else { cam.link = "error"; cam.err = (t === "network" || t === "server-error" || t === "socket-error" || t === "socket-closed") ? "Server di collegamento non raggiungibile. Controlla la connessione a Internet." : "Errore di collegamento" + (t ? " (" + t + ")" : "") + "."; }
+    dockUpdate();
+  });
+}
+
+function leaveCamera() {
+  disconnectCam();
+  stopStream(cam.stream, vfull); cam.stream = null;
+  try { cam.wake && cam.wake.release(); } catch (e) { /* ignora */ }
+  cam.wake = null; cam.link = "idle"; cam.code = "";
+  clearOverlay();
+  try { history.replaceState(null, "", location.pathname + location.search); } catch (e) { /* ignora */ }
+}
+
+/* Ciclo della telecamera: rileva, disegna lo scheletro, invia */
+function camTick(now) {
+  if (cam.camErr) return;
+  if (mp.lmk && cam.modelReady && vfull.readyState >= 2 && vfull.currentTime !== cam.lastVT) {
+    cam.lastVT = vfull.currentTime;
+    let hands = [];
+    try { hands = extract(mp.lmk.detectForVideo(vfull, performance.now()), (vfull.videoWidth / vfull.videoHeight) || 0.75); }
+    catch (e) { console.error(e); }
+    cam.n = hands.length;
+    clearOverlay();
+    const W = ov.width, H = ov.height, vw = vfull.videoWidth || 1, vh = vfull.videoHeight || 1;
+    const s = Math.max(W / vw, H / vh), dw = vw * s, dh = vh * s, ox = (W - dw) / 2, oy = (H - dh) / 2, front = cam.facing === "user";
+    drawHands(hands, (p) => { const px = ox + p.x * dw; return [front ? W - px : px, oy + p.y * dh]; });
+    if (cam.conn && cam.conn.open) { try { cam.conn.send({ t: "h", h: hands.map(pack) }); } catch (e) { /* ignora */ } }
+  }
+  if (now - cam.dockT > 400) { cam.dockT = now; if (cam.link === "connected") dockUpdate(); }
+  if (cam.detector && cam.link !== "connected" && cam.link !== "connecting" && now - cam.lastScan > 500 && vfull.readyState >= 2) {
+    cam.lastScan = now;
+    cam.detector.detect(vfull).then((r) => {
+      if (!r || !r[0] || cam.link === "connected" || cam.link === "connecting") return;
+      const m = String(r[0].rawValue || "").match(/c=([A-Za-z0-9]{5})\b/);
+      if (m) { $("#dCode").value = m[1].toUpperCase(); connectTo(m[1]); }
+    }).catch(() => {});
+  }
+}
+
+/* ====================================================================
+   Puntatore come mano di riserva (se nessuna sorgente è attiva)
+   ==================================================================== */
+const mouse = { inside: false, down: false, x: 0, y: 0 };
+const glCanvas = $("#gl");
+glCanvas.addEventListener("pointermove", (e) => {
+  mouse.inside = true; mouse.x = ((e.clientX / innerWidth) * 2 - 1) * field.aspect; mouse.y = 1 - (e.clientY / innerHeight) * 2;
+});
+glCanvas.addEventListener("pointerdown", () => { mouse.down = true; });
+addEventListener("pointerup", () => { mouse.down = false; });
+glCanvas.addEventListener("pointerleave", () => { mouse.inside = false; });
+
+/* ====================================================================
+   Ciclo principale
+   ==================================================================== */
+const field = new Field(glCanvas);
+field.setCount(Math.min(state.count, MENU_N));
+sizeOverlay();
+addEventListener("resize", () => { field.resize(); sizeOverlay(); });
+
+const hud = { n: $("#hN"), fps: $("#hFps"), hands: $("#hHands"), open: $("#hOpen"), track: $("#hTrack"), msg: $("#hudMsg"), msgText: $("#hudMsgText") };
+let last = performance.now(), fpsAcc = 0, fpsN = 0, hudT = 0;
+
+function frame() {
+  requestAnimationFrame(frame);
+  const now = performance.now();
+  const raw = (now - last) / 1000, dt = Math.min(0.033, raw || 0.016); last = now;
+
+  if (state.mode === "camera") { camTick(now); return; }
+
+  let external = false;
+  if (state.mode === "sim") {
+    if (state.source === "local") {
+      external = tracking.ready;
+      if (tracking.ready && video.readyState >= 2 && video.currentTime !== tracking.lastVT) {
+        tracking.lastVT = video.currentTime;
+        try { processHands(extract(mp.lmk.detectForVideo(video, now), (video.videoWidth / video.videoHeight) || 4 / 3), now); }
+        catch (e) { console.error(e); tracking.ready = false; tracking.status = "error"; tracking.msg = "Il tracciamento si è interrotto."; }
+      }
+    } else {
+      external = pairing.connected;
+    }
+    if (!external && mouse.inside) assign([{ x: mouse.x, y: mouse.y, z: 0, open: mouse.down ? 0.05 : 0.9 }], now);
+  }
+  updateSlots(dt, now);
+  field.step(dt, now / 1000, slots, state.mode === "sim" && state.hands === 2);
+  field.draw(settings);
+
+  if (raw > 0) { fpsAcc += raw; fpsN++; }
+  if (state.mode === "sim" && now - hudT > 250) {
+    hudT = now;
+    hud.n.textContent = fmt(field.n);
+    hud.fps.textContent = (fpsN ? Math.round(fpsN / fpsAcc) : 0) + " fps"; fpsAcc = 0; fpsN = 0;
+    const act = slots.slice(0, state.hands).filter((s) => s.active);
+    hud.hands.textContent = act.length + " / " + state.hands;
+    hud.open.textContent = act.length ? act.map((s) => s.open.toFixed(2)).join(" · ") : "n.d.";
+    let label, cls = "", msg = "";
+    if (state.source === "phone") {
+      if (pairing.connected) { label = "telefono collegato"; cls = "ok"; }
+      else if (pairing.status === "error") { label = "errore"; cls = "err"; msg = pairing.err; }
+      else { label = "in attesa del telefono"; }
+    } else {
+      const t = tracking.status;
+      label = t === "ready" ? "attivo" : t === "loading" ? "avvio" : t === "error" ? (mouse.inside ? "puntatore" : "non disponibile") : "in attesa";
+      cls = t === "ready" ? "ok" : t === "error" ? "err" : "";
+      if (t === "error") msg = tracking.msg + " Puoi usare il puntatore: il clic chiude il campo.";
+    }
+    hud.track.textContent = label; hud.track.className = cls;
+    hud.msg.hidden = !msg; hud.msgText.textContent = msg;
+  }
+}
+
+/* ====================================================================
+   Navigazione tra le schermate
+   ==================================================================== */
+const btnMenu = $("#btnMenu");
+function setMode(m) {
+  state.mode = m;
+  $("#modes").hidden = m !== "modes";
+  $("#menu").hidden = m !== "menu";
+  $("#camview").hidden = m !== "camera";
+  $("#dock").hidden = m !== "camera";
+  glCanvas.style.visibility = m === "camera" ? "hidden" : "visible";
+  $("#hud").hidden = m !== "sim";
+  $("#legend").hidden = m !== "sim";
+  $("#cam").hidden = !(m === "sim" && state.source === "local");
+  btnMenu.hidden = !(m === "sim" || m === "camera");
+  btnMenu.textContent = m === "camera" ? "Esci" : "Menu";
+  $("#btnFlip").hidden = m !== "camera";
+  updatePair();
+  if (m !== "camera") clearOverlay();
+}
+
+$("#modeCam").addEventListener("click", () => enterCamera(null));
+$("#modeScreen").addEventListener("click", () => setMode("menu"));
+$("#backModes").addEventListener("click", () => setMode("modes"));
+
+btnMenu.addEventListener("click", () => {
+  if (state.mode === "camera") { leaveCamera(); setMode("modes"); }
+  else if (state.mode === "sim") { stopSim(); setMode("menu"); }
+});
+$("#btnFlip").addEventListener("click", async () => {
+  cam.facing = cam.facing === "user" ? "environment" : "user";
+  $("#btnFlip").textContent = cam.facing === "user" ? "Frontale" : "Posteriore";
+  await startCamStream();
+});
+$("#dForm").addEventListener("submit", (e) => { e.preventDefault(); connectTo($("#dCode").value); });
+$("#dCode").addEventListener("input", (e) => { e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 5); });
+$("#dDisc").addEventListener("click", () => { disconnectCam(); cam.link = "idle"; cam.n = 0; dockUpdate(); });
+$("#dRetry").addEventListener("click", () => startCamStream());
+
+/* ====================================================================
+   Domande della modalità Schermo
+   ==================================================================== */
+const startBtn = $("#start"), menuStatus = $("#menuStatus");
+const countInput = $("#count"), countHint = $("#countHint");
+const devBtns = [...document.querySelectorAll("[data-device]")], handBtns = [...document.querySelectorAll("[data-hands]")], srcBtns = [...document.querySelectorAll("[data-source]")];
+$("#cPc").textContent = fmt(COUNTS.pc) + " punti";
+$("#cPhone").textContent = fmt(COUNTS.phone) + " punti";
+
+function paintMenu() {
+  devBtns.forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.device === state.device)));
+  handBtns.forEach((b) => b.setAttribute("aria-pressed", String(+b.dataset.hands === state.hands)));
+  srcBtns.forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.source === state.source)));
+  $("#menuNote").textContent = state.source === "phone"
+    ? "Dopo Inizia comparirà un codice. Sul telefono apri la stessa pagina e scegli Telecamera. Lo schermo riceve solo le coordinate delle mani, non il video."
+    : "La fotocamera viene richiesta all'avvio. Il video è elaborato localmente nel browser e non viene inviato a nessun server.";
+}
+devBtns.forEach((b) => b.addEventListener("click", () => {
+  state.device = b.dataset.device; state.count = COUNTS[state.device];
+  countInput.value = state.count; setHint(); paintMenu(); saveConfig();
+}));
+handBtns.forEach((b) => b.addEventListener("click", () => { state.hands = +b.dataset.hands; paintMenu(); saveConfig(); }));
+srcBtns.forEach((b) => b.addEventListener("click", () => { state.source = b.dataset.source; paintMenu(); saveConfig(); }));
+function setHint(msg) {
+  countHint.textContent = msg || "Intervallo consentito: da 500 a 200.000.";
+  countHint.classList.toggle("warn", !!msg);
+}
+countInput.addEventListener("input", () => {
+  const digits = countInput.value.replace(/\D/g, "");
+  if (digits !== countInput.value) countInput.value = digits;
+  const v = parseInt(digits, 10);
+  if (!isNaN(v)) {
+    state.count = clamp(v, MIN_N, MAX_N);
+    state.device = state.count === COUNTS.pc ? "pc" : state.count === COUNTS.phone ? "phone" : null;
+    setHint(v < MIN_N ? "Il valore minimo è 500." : v > MAX_N ? "Il valore massimo è 200.000." : "");
+    paintMenu();
+  }
+});
+countInput.addEventListener("change", () => { countInput.value = state.count; setHint(); saveConfig(); });
+countInput.addEventListener("keydown", (e) => { if (e.key === "Enter") startBtn.click(); });
+countInput.value = state.count; paintMenu();
+
+function enterSim() {
+  setMode("sim");
+  field.setCount(state.count);
+  slots.forEach((s) => { s.seenOnce = false; s.active = false; s.w = 0; s.impulse = 0; });
+  if (state.source === "phone") startPairing();
+}
+function stopSim() {
+  stopPairing(); stopLocal();
+  tracking.status = "idle"; tracking.msg = "";
+  field.setCount(Math.min(state.count, MENU_N));
+  slots.forEach((s) => { s.seenOnce = false; s.active = false; });
+  menuStatus.textContent = ""; menuStatus.classList.remove("err");
+}
+
+startBtn.addEventListener("click", async () => {
+  state.count = clamp(parseInt(countInput.value, 10) || state.count, MIN_N, MAX_N);
+  saveConfig();
+  if (state.source === "local") {
+    startBtn.disabled = true; startBtn.textContent = "Avvio in corso";
+    await startTracking((m) => { menuStatus.textContent = m; });
+    startBtn.disabled = false; startBtn.textContent = "Inizia";
+    menuStatus.textContent = "";
+  }
+  enterSim();
+});
+$("#btnRetry").addEventListener("click", async () => {
+  const b = $("#btnRetry"); b.disabled = true;
+  if (state.source === "phone") startPairing(); else await startTracking();
+  b.disabled = false;
+});
+
+/* ====================================================================
+   Impostazioni
+   ==================================================================== */
+const sheet = $("#settings"), setBtn = $("#btnSettings");
+const RANGE_FMT = { size: (v) => v.toFixed(1) + " px", bright: (v) => v.toFixed(2), trail: (v) => v.toFixed(2), field: (v) => v.toFixed(2) + "×" };
+function syncSettingsUI() {
+  sheet.querySelectorAll("[data-key]").forEach((el) => {
+    const k = el.dataset.key;
+    if (el.type === "checkbox") el.checked = !!settings[k];
+    else { el.value = settings[k]; const o = $("#o-" + k); if (o) o.textContent = RANGE_FMT[k](+settings[k]); }
+  });
+}
+function applySettings() {
+  $("#cam").classList.toggle("off", !settings.preview);
+  video.style.transform = settings.mirror ? "scaleX(-1)" : "none";
+  if (!settings.skeleton && state.mode !== "camera") clearOverlay();
+  store.set("settings", settings);
+}
+sheet.querySelectorAll("[data-key]").forEach((el) => {
+  el.addEventListener("input", () => {
+    const k = el.dataset.key;
+    settings[k] = el.type === "checkbox" ? el.checked : parseFloat(el.value);
+    const o = $("#o-" + k); if (o) o.textContent = RANGE_FMT[k](settings[k]);
+    applySettings();
+  });
+});
+let opener = null;
+function openSettings() { opener = document.activeElement; syncSettingsUI(); sheet.hidden = false; $("#closeSettings").focus(); }
+function closeSettings() { sheet.hidden = true; if (opener && opener.focus) opener.focus(); }
+setBtn.addEventListener("click", openSettings);
+$("#closeSettings").addEventListener("click", closeSettings);
+sheet.addEventListener("click", (e) => { if (e.target === sheet) closeSettings(); });
+addEventListener("keydown", (e) => { if (e.key === "Escape" && !sheet.hidden) closeSettings(); });
+$("#reset").addEventListener("click", () => { Object.assign(settings, DEFAULTS); syncSettingsUI(); applySettings(); });
+
+/* ====================================================================
+   Avvio
+   ==================================================================== */
+applySettings();
+setMode("modes");
+requestAnimationFrame(frame);
+{
+  // Un indirizzo con #c=CODICE (dal QR) apre subito la modalità Telecamera e si collega.
+  const m = location.hash.match(/c=([A-Za-z0-9]{5})\b/);
+  if (m) enterCamera(m[1].toUpperCase());
+}
+</script>
+</body>
+</html>
