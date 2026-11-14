@@ -251,6 +251,7 @@ h1{font-weight:300;font-size:clamp(30px,5vw,40px);line-height:1.1;letter-spacing
     <dt>Mani rilevate</dt><dd id="hHands">0 / 1</dd>
     <dt>Apertura</dt><dd id="hOpen">n.d.</dd>
     <dt>Posizione</dt><dd id="hPose">n.d.</dd>
+    <dt>Dita</dt><dd id="hFing">n.d.</dd>
     <dt>Tracciamento</dt><dd id="hTrack">in attesa</dd>
   </dl>
   <div class="hudmsg" id="hudMsg" hidden><span id="hudMsgText"></span><br><button type="button" id="btnRetry">Riprova</button></div>
@@ -552,6 +553,7 @@ function applyDet(s, d, now, fresh) {
     else { s.poseCand = g; s.poseN = 1; }
     if (s.pose === "o" && s.fr + s.fs < 0.2 && s.open - s.openSlow > 0.32 && now - s.lastBurst > 700) { s.impulse = 1; s.lastBurst = now; }
   }
+  s.fing = d.f || null;
   s.seen = now; s.seenOnce = true; s.active = true;
 }
 
@@ -594,7 +596,7 @@ function toDet(h) {
   const sc = 1 / (1 - z * 0.45);
   const mx = settings.mirror ? 1 - h.cx : h.cx;
   const rot = (settings.mirror ? Math.PI - h.ang : h.ang) - Math.PI / 2;   // 0 con la mano in verticale
-  return { x: ((mx * 2 - 1) * field.aspect) / sc, y: (1 - h.cy * 2) / sc, z, open: h.o, g: h.g, rot };
+  return { x: ((mx * 2 - 1) * field.aspect) / sc, y: (1 - h.cy * 2) / sc, z, open: h.o, g: h.g, rot, f: h.f || (h.lm && h.lm.length === 21 ? fingers(h.lm, h.ar || 0.75) : null) };
 }
 
 /* ====================================================================
@@ -644,8 +646,8 @@ function stopStream(stream, videoEl) {
 }
 
 /* Riconoscimento delle posizioni: o = libera, p = telefono (pollice + mignolo), r = rock (pollice + indice + mignolo) */
-const POSE = { thumb: 0.85, ratio: 1.45, cos: -0.5 };   // soglie regolabili
-function classify(lm, ar) {
+const POSE = { thumb: 0.6, ratio: 1.35, cos: -0.3 };   // soglie regolabili (più basse = più facile "alzato")
+function fingers(lm, ar) {   // [pollice, indice, medio, anulare, mignolo]: true = alzato
   const X = (i) => lm[i].x * ar, Y = (i) => lm[i].y;
   const d = (a, b) => Math.hypot(X(a) - X(b), Y(a) - Y(b));
   const palm = d(0, 9) || 1e-3;
@@ -654,11 +656,11 @@ function classify(lm, ar) {
     const cos = (ax * bx + ay * by) / ((Math.hypot(ax, ay) * Math.hypot(bx, by)) || 1e-6);
     return d(tip, 0) / (d(mcp, 0) || 1e-3) > POSE.ratio && cos < POSE.cos;
   };
-  const T = d(4, 5) / palm > POSE.thumb;
-  const I = finger(5, 6, 8), M = finger(9, 10, 12), R = finger(13, 14, 16), P = finger(17, 18, 20);
-  if (T && P && !M && !R) return I ? "r" : "p";
-  return "o";
+  const T = d(4, 17) > d(3, 17) * 1.05 && d(4, 5) / palm > POSE.thumb;
+  return [T, finger(5, 6, 8), finger(9, 10, 12), finger(13, 14, 16), finger(17, 18, 20)];
 }
+function poseOf(f) { return f[0] && f[4] && !f[2] && !f[3] ? (f[1] ? "r" : "p") : "o"; }
+const classify = (lm, ar) => poseOf(fingers(lm, ar));
 
 /* Risultato del modello → mani con centro, apertura, dimensione del palmo, posizione e angolo */
 function extract(res, ar) {
@@ -671,15 +673,17 @@ function extract(res, ar) {
     let r = 0;
     [8, 12, 16, 20].forEach((k) => { r += Math.hypot((lm[k].x - lm[0].x) * ar, lm[k].y - lm[0].y); });
     r /= 4 * palm;
-    out.push({ cx, cy, p: palm, o: clamp((r - 1.1) / 0.55, 0, 1), g: classify(lm, ar), ang: Math.atan2(-(lm[9].y - lm[0].y), (lm[9].x - lm[0].x) * ar), lm: lm.map((q) => ({ x: q.x, y: q.y })) });
+    out.push({ cx, cy, p: palm, o: clamp((r - 1.1) / 0.55, 0, 1), ar, g: classify(lm, ar), ang: Math.atan2(-(lm[9].y - lm[0].y), (lm[9].x - lm[0].x) * ar), lm: lm.map((q) => ({ x: q.x, y: q.y })) });
   }
   return out;
 }
-const pack = (h) => ({ cx: rnd(h.cx, 4), cy: rnd(h.cy, 4), p: rnd(h.p, 4), o: rnd(h.o, 3), g: h.g, a: rnd(h.ang, 3), l: h.lm.flatMap((q) => [rnd(q.x, 3), rnd(q.y, 3)]) });
+const pack = (h) => ({ cx: rnd(h.cx, 4), cy: rnd(h.cy, 4), p: rnd(h.p, 4), o: rnd(h.o, 3), g: h.g, r: rnd(h.ar || 0.75, 3), a: rnd(h.ang, 3), l: h.lm.flatMap((q) => [rnd(q.x, 3), rnd(q.y, 3)]) });
 function unpack(h) {
   const l = [];
   if (Array.isArray(h.l) && h.l.length === 42) for (let i = 0; i < 42; i += 2) l.push({ x: +h.l[i] || 0, y: +h.l[i + 1] || 0 });
-  return { cx: clamp(+h.cx || 0, 0, 1), cy: clamp(+h.cy || 0, 0, 1), p: clamp(+h.p || 0.15, 0.01, 1), o: clamp(+h.o || 0, 0, 1), g: (h.g === "p" || h.g === "r") ? h.g : "o", ang: Number.isFinite(+h.a) ? +h.a : Math.PI / 2, lm: l };
+  // il gesto viene ricalcolato qui dai 21 punti, così non dipende dalla versione della pagina sul telefono
+  const f = l.length === 21 ? fingers(l, clamp(+h.r || 0.75, 0.2, 5)) : [false, false, false, false, false];
+  return { cx: clamp(+h.cx || 0, 0, 1), cy: clamp(+h.cy || 0, 0, 1), p: clamp(+h.p || 0.15, 0.01, 1), o: clamp(+h.o || 0, 0, 1), f, g: l.length === 21 ? poseOf(f) : "o", ang: Number.isFinite(+h.a) ? +h.a : Math.PI / 2, lm: l };
 }
 
 /* Overlay scheletro */
@@ -941,7 +945,7 @@ field.setCount(Math.min(state.count, MENU_N));
 sizeOverlay();
 addEventListener("resize", () => { field.resize(); sizeOverlay(); });
 
-const hud = { n: $("#hN"), fps: $("#hFps"), hands: $("#hHands"), open: $("#hOpen"), pose: $("#hPose"), track: $("#hTrack"), msg: $("#hudMsg"), msgText: $("#hudMsgText") };
+const hud = { n: $("#hN"), fps: $("#hFps"), hands: $("#hHands"), open: $("#hOpen"), pose: $("#hPose"), fing: $("#hFing"), track: $("#hTrack"), msg: $("#hudMsg"), msgText: $("#hudMsgText") };
 let last = performance.now(), fpsAcc = 0, fpsN = 0, hudT = 0;
 
 function frame() {
@@ -978,6 +982,7 @@ function frame() {
     hud.hands.textContent = act.length + " / " + state.hands;
     hud.open.textContent = act.length ? act.map((s) => s.open.toFixed(2)).join(" · ") : "n.d.";
     hud.pose.textContent = act.length ? act.map((s) => POSE_NAME[s.pose]).join(" · ") : "n.d.";
+    hud.fing.textContent = act.length && act[0].fing ? act[0].fing.map((v) => (v ? "1" : "0")).join("") : "n.d.";   // pollice, indice, medio, anulare, mignolo
     let label, cls = "", msg = "";
     if (state.source === "phone") {
       if (pairing.connected) { label = "telefono collegato"; cls = "ok"; }
