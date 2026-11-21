@@ -1030,7 +1030,7 @@ function holoUpdate(hands, now) {
   atom.want = true; atom.seen = now;
   atom.tp = open.reduce((q, h) => Math.max(q, h.p), 0); atom.tl = 1;
   const h0 = open.reduce((q, h) => (h.p > q.p ? h : q), open[0]);   // una sola mano: la più vicina
-  atom.tx = h0.cx; atom.ty = h0.cy; atom.tR = clamp(h0.p * 0.85, 0.03, 0.3);   // proporzionale alla mano
+  atom.tx = h0.cx; atom.ty = h0.cy; atom.tR = clamp(h0.p * 1.05, 0.04, 0.36);   // proporzionale alla mano
   if (!atom.init || atom.k < 0.02) { atom.cx = atom.tx; atom.cy = atom.ty; atom.init = true; }
 }
 
@@ -1072,37 +1072,58 @@ function drawAtom(c, x, y, R, t, k) {
 }
 
 /* Primo ologramma: "anello orbitale" (anelli con tacche, archi che ruotano, nodi orbitanti, nucleo pulsante) */
+const WISPS = Array.from({ length: 46 }, (_, i) => { const r = (n) => { const x = Math.sin(i * 127.1 + n * 311.7) * 43758.5453; return x - Math.floor(x); };
+  return { a: r(1) * TAU, l: 0.08 + r(2) * 0.2, w: (r(3) - 0.5) * 0.9, f: 0.4 + r(4) * 1.2, ph: r(5) * TAU, in: i % 3 === 0 }; });
 function drawRings(c, x, y, R, t, k) {
   const ease = (v) => { v = Math.max(0, Math.min(1, v)); return 1 - Math.pow(1 - v, 3); };
-  const G = (a) => "rgba(90,255,150," + a + ")";
-  c.save(); c.translate(x, y); c.globalCompositeOperation = "lighter"; c.lineCap = "butt";
-  c.shadowColor = G(0.95); c.shadowBlur = 14;
-  const spin = (1 - ease(k)) * 4;
-  const stage = (i) => ease(k * 1.7 - i * 0.2);   // ogni livello si apre in sequenza
-  const arc = (r, p, a0) => { c.beginPath(); c.arc(0, 0, r, a0, a0 + TAU * p); c.stroke(); };
-  const g = c.createRadialGradient(0, 0, 0, 0, 0, R);
-  g.addColorStop(0, G(0.22 * k)); g.addColorStop(0.7, G(0.06 * k)); g.addColorStop(1, G(0));
-  c.fillStyle = g; c.beginPath(); c.arc(0, 0, R, 0, TAU); c.fill();
-  // anello esterno doppio
-  let p0 = stage(0); c.strokeStyle = G(0.95 * p0); c.lineWidth = 2.5; arc(R, p0, -Math.PI / 2 + spin);
-  c.lineWidth = 1; c.strokeStyle = G(0.7 * p0); arc(R * 0.93, p0, -Math.PI / 2 - spin);
-  // linee di scala (tratti radiali)
-  const p1 = stage(1); c.save(); c.rotate(t * 0.25 + spin); c.lineWidth = 1.5; c.strokeStyle = G(0.8 * p1);
-  const n = 48, m = Math.floor(n * p1);
-  for (let i = 0; i < m; i++) { const a = (i / n) * TAU, l = i % 4 === 0 ? 0.1 : 0.05, ca = Math.cos(a), sa = Math.sin(a);
-    c.beginPath(); c.moveTo(ca * R * 0.9, sa * R * 0.9); c.lineTo(ca * R * (0.9 - l), sa * R * (0.9 - l)); c.stroke(); }
+  const G = (a) => "rgba(80,255,140," + a + ")", W = (a) => "rgba(200,255,220," + a + ")";
+  const st = (i) => ease(k * 1.8 - i * 0.16), sp = (1 - ease(k)) * 3;
+  const arc = (r, p, a0) => { c.beginPath(); c.arc(0, 0, r * R, a0, a0 + TAU * p); c.stroke(); };
+  const poly = (n, r, rot, p) => { c.beginPath(); const m = Math.max(1, Math.ceil(n * p)); for (let i = 0; i <= m; i++) { const q = Math.min(i, n * p), a = rot + (q / n) * TAU - Math.PI / 2; (i ? c.lineTo : c.moveTo).call(c, Math.cos(a) * r * R, Math.sin(a) * r * R); } c.stroke(); };
+  c.save(); c.translate(x, y); c.globalCompositeOperation = "lighter"; c.lineCap = "butt"; c.shadowColor = G(1); c.shadowBlur = 12;
+  // alone interno
+  const hg = c.createRadialGradient(0, 0, 0, 0, 0, R * 1.05);
+  hg.addColorStop(0, G(0.10 * k)); hg.addColorStop(0.75, G(0.22 * k)); hg.addColorStop(1, G(0));
+  c.fillStyle = hg; c.beginPath(); c.arc(0, 0, R * 1.05, 0, TAU); c.fill();
+  // anello esterno luminoso
+  let q = st(0); c.strokeStyle = W(0.95 * q); c.lineWidth = Math.max(2, R * 0.012); arc(1, q, -Math.PI / 2 + sp);
+  c.strokeStyle = G(0.8 * q); c.lineWidth = 1.2; arc(0.965, q, -Math.PI / 2 - sp); arc(0.94, q, -Math.PI / 2 + sp);
+  // anello con tacche
+  q = st(1); c.save(); c.rotate(t * 0.05 + sp); c.strokeStyle = W(0.85 * q); c.lineWidth = Math.max(1.2, R * 0.006);
+  const nt = 72, mt = Math.floor(nt * q);
+  for (let i = 0; i < mt; i++) { const a = (i / nt) * TAU, ca = Math.cos(a), sa = Math.sin(a), l = i % 2 ? 0.035 : 0.06;
+    c.beginPath(); c.moveTo(ca * R * 0.91, sa * R * 0.91); c.lineTo(ca * R * (0.91 - l), sa * R * (0.91 - l)); c.stroke(); }
+  c.restore(); c.strokeStyle = G(0.7 * q); c.lineWidth = 1; arc(0.84, q, 0);
+  // segmenti spessi
+  q = st(2); c.save(); c.rotate(-t * 0.12 - sp); c.strokeStyle = W(0.9 * q); c.lineWidth = Math.max(3, R * 0.022);
+  [[0.2, 0.55], [0.95, 0.35], [1.6, 0.5], [2.3, 0.3], [3.0, 0.6], [3.9, 0.28], [4.5, 0.5], [5.4, 0.35]].forEach(([a0, l]) => { c.beginPath(); c.arc(0, 0, R * 0.775, a0, a0 + l * 0.5 * q); c.stroke(); });
   c.restore();
-  // anello tratteggiato in controrotazione
-  const p2 = stage(2); c.save(); c.rotate(-t * 0.6 - spin); c.setLineDash([R * 0.16, R * 0.06]); c.lineWidth = 3; c.strokeStyle = G(0.9 * p2); arc(R * 0.74, p2, 0); c.restore();
-  // tre archi spessi
-  const p3 = stage(3); c.save(); c.rotate(t * 0.9 + spin * 1.5); c.lineWidth = 5; c.strokeStyle = G(0.95 * p3);
-  for (let i = 0; i < 3; i++) { c.beginPath(); c.arc(0, 0, R * 0.58, (i * TAU) / 3, (i * TAU) / 3 + 1.0 * p3); c.stroke(); } c.restore();
-  // triangolo e quadrato inscritti (linee)
-  const p4 = stage(4); c.save(); c.rotate(-t * 0.35 - spin); c.lineWidth = 1.3; c.strokeStyle = G(0.85 * p4);
-  [3, 4].forEach((sides) => { c.beginPath(); const r = R * 0.45 * p4; for (let i = 0; i <= sides; i++) { const a = (i / sides) * TAU; (i ? c.lineTo : c.moveTo).call(c, Math.cos(a) * r, Math.sin(a) * r); } c.stroke(); });
+  // anelli sottili e archi interni
+  q = st(3); c.strokeStyle = G(0.75 * q); c.lineWidth = 1.2; arc(0.715, q, 0); arc(0.66, q, t * 0.1);
+  c.save(); c.rotate(t * 0.18 + sp); c.strokeStyle = W(0.9 * q); c.lineWidth = Math.max(2.5, R * 0.016);
+  [[0.1, 0.9], [2.3, 0.7], [4.2, 0.8]].forEach(([a0, l]) => { c.beginPath(); c.arc(0, 0, R * 0.69, a0, a0 + l * q); c.stroke(); }); c.restore();
+  // figure geometriche: quadrato, rombo, triangolo
+  q = st(4); c.strokeStyle = W(0.9 * q); c.lineWidth = Math.max(1.6, R * 0.009);
+  poly(4, 0.61, Math.PI / 4, q);                  // quadrato (assi orizzontali)
+  c.strokeStyle = G(0.85 * q); poly(4, 0.57, 0, q);   // rombo
+  c.strokeStyle = G(0.6 * q); c.lineWidth = 1; poly(4, 0.45, Math.PI / 4, q);   // quadrato interno sottile
+  q = st(5); c.strokeStyle = W(0.95 * q); c.lineWidth = Math.max(1.6, R * 0.009); poly(3, 0.5, 0, q);   // triangolo
+  // assi sottili tratteggiati
+  c.save(); c.setLineDash([2, 6]); c.strokeStyle = G(0.5 * q); c.lineWidth = 1; c.beginPath(); c.moveTo(-R * 0.92, 0); c.lineTo(R * 0.92, 0); c.moveTo(0, -R * 0.92); c.lineTo(0, R * 0.92); c.stroke(); c.restore();
+  // cerchio centrale con vortice
+  q = st(6); c.strokeStyle = W(0.97 * q); c.lineWidth = Math.max(2.5, R * 0.016); arc(0.245, q, 0);
+  c.save(); c.beginPath(); c.arc(0, 0, R * 0.235, 0, TAU); c.clip(); c.strokeStyle = G(0.45 * q); c.lineWidth = 1;
+  for (let j = 0; j < 7; j++) { c.beginPath(); for (let i = 0; i <= 24; i++) { const u = i / 24, a = t * 0.6 + j * 0.9 + u * 3.2, rr = R * 0.24 * u; (i ? c.lineTo : c.moveTo).call(c, Math.cos(a) * rr, Math.sin(a) * rr); } c.stroke(); }
   c.restore();
-  // anello centrale pulsante
-  const p5 = stage(5); c.lineWidth = 2; c.strokeStyle = G(0.95 * p5); arc(R * (0.2 + 0.015 * Math.sin(t * 3)), p5, 0);
+  // fili di plasma all'esterno e scintille
+  c.shadowBlur = 6; c.lineWidth = 1;
+  WISPS.forEach((w) => {
+    const a = w.a + Math.sin(t * 0.4 + w.ph) * 0.04, r0 = w.in ? 0.8 : 0.99, len = w.l * (0.7 + 0.3 * Math.sin(t * w.f + w.ph)), ca = Math.cos(a), sa = Math.sin(a);
+    const x0 = ca * R * r0, y0 = sa * R * r0, x1 = ca * R * (r0 + len), y1 = sa * R * (r0 + len), cx = (x0 + x1) / 2 - sa * R * w.w * 0.15 * Math.sin(t * w.f + w.ph), cy = (y0 + y1) / 2 + ca * R * w.w * 0.15 * Math.sin(t * w.f + w.ph);
+    c.strokeStyle = G(0.4 * k * (w.in ? 0.5 : 1)); c.beginPath(); c.moveTo(x0, y0); c.quadraticCurveTo(cx, cy, x1, y1); c.stroke();
+  });
+  c.fillStyle = W(0.9 * k);
+  for (let i = 0; i < 14; i++) { const a = i * 2.4 + t * 0.1, r = 1 + 0.06 * Math.sin(t * 2 + i * 3); c.fillRect(Math.cos(a) * R * r - 1, Math.sin(a) * R * r - 1, 2, 2); }
   c.restore();
 }
 
@@ -1138,9 +1159,8 @@ function holoRender(v, mirror, now) {
   atom.R += (atom.tR - atom.R) * (1 - Math.exp(-dt * 6));
   atom.p += (atom.tp - atom.p) * (1 - Math.exp(-dt * 6)); atom.lift += (atom.tl - atom.lift) * (1 - Math.exp(-dt * 5));
   if (atom.k > 0.01) { const [x0, y0] = m.map({ x: atom.cx, y: atom.cy }), T = now / 1000, Rp = atom.R * m.dh;
-    const lift = atom.lift * (atom.p * m.dh * 0.8 + Rp * 0.7);   // sospeso sopra il palmo
-    const x = x0 + Math.sin(T * 0.9) * Rp * 0.05 + Math.sin(T * 1.7 + 1) * Rp * 0.025;
-    const y = y0 - lift + Math.sin(T * 1.3) * Rp * 0.09 + Math.sin(T * 2.3) * Rp * 0.03;
+    const lift = atom.lift * (atom.p * m.dh * 1.2 + Rp * 0.9);   // sospeso sopra il palmo
+    const x = x0, y = y0 - lift;
     drawAtom(octx, x, y, Rp, T, atom.k); atom.fx = x; atom.fy = y; atom.fR = Rp; }
   if (atom.flash) {   // lampo di energia
     const q = (now - atom.flash) / 380;
@@ -1157,7 +1177,7 @@ function holoRender(v, mirror, now) {
   holo.slots.forEach((sl) => {   // scudo di energia sui pugni
     const on = now - sl.seen < 300;
     sl.k += ((on && sl.want ? 1 : 0) - sl.k) * (1 - Math.exp(-dt * (on && sl.want ? 3.5 : 6)));
-    if (sl.k > 0.01) { const [x, y] = m.map({ x: sl.cx, y: sl.cy }); drawRings(octx, x, y, clamp(sl.p * m.dh * 1.7, 50, Math.min(W, H) * 0.55), now / 1000, sl.k); }
+    if (sl.k > 0.01) { const [x, y] = m.map({ x: sl.cx, y: sl.cy }); drawRings(octx, x, y, clamp(sl.p * m.dh * 1.5, 50, Math.min(W, H) * 0.5), now / 1000, sl.k); }
   });
   drawPip(v, mirror);
 }
