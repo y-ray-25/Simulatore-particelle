@@ -1028,12 +1028,9 @@ function holoUpdate(hands, now) {
   });
   if (!open.length) { atom.want = false; atom.closeT = now; return; }
   atom.want = true; atom.seen = now;
-  atom.tp = open.reduce((q, h) => q + h.p, 0) / open.length; atom.tl = open.length >= 2 ? 0 : 1;
-  if (open.length >= 2) {
-    const [A, B] = open, ar = (vremote.videoWidth && vremote.videoHeight && state.mode === "holo") ? vremote.videoWidth / vremote.videoHeight : (vfull.videoWidth && vfull.videoHeight ? vfull.videoWidth / vfull.videoHeight : 1.33);
-    atom.tx = (A.cx + B.cx) / 2; atom.ty = (A.cy + B.cy) / 2;
-    atom.tR = clamp(Math.hypot((A.cx - B.cx) * ar, A.cy - B.cy) * 0.5, 0.06, 0.8);
-  } else { atom.tx = open[0].cx; atom.ty = open[0].cy; }   // una mano: la forma resta com'è
+  atom.tp = open.reduce((q, h) => Math.max(q, h.p), 0); atom.tl = 1;
+  const h0 = open.reduce((q, h) => (h.p > q.p ? h : q), open[0]);   // una sola mano: la più vicina
+  atom.tx = h0.cx; atom.ty = h0.cy; atom.tR = clamp(h0.p * 0.85, 0.03, 0.3);   // proporzionale alla mano
   if (!atom.init || atom.k < 0.02) { atom.cx = atom.tx; atom.cy = atom.ty; atom.init = true; }
 }
 
@@ -1141,7 +1138,7 @@ function holoRender(v, mirror, now) {
   atom.R += (atom.tR - atom.R) * (1 - Math.exp(-dt * 6));
   atom.p += (atom.tp - atom.p) * (1 - Math.exp(-dt * 6)); atom.lift += (atom.tl - atom.lift) * (1 - Math.exp(-dt * 5));
   if (atom.k > 0.01) { const [x0, y0] = m.map({ x: atom.cx, y: atom.cy }), T = now / 1000, Rp = atom.R * m.dh;
-    const lift = atom.lift * (atom.p * m.dh * 1.0 + Rp * 0.9);   // sospeso sopra il palmo
+    const lift = atom.lift * (atom.p * m.dh * 0.8 + Rp * 0.7);   // sospeso sopra il palmo
     const x = x0 + Math.sin(T * 0.9) * Rp * 0.05 + Math.sin(T * 1.7 + 1) * Rp * 0.025;
     const y = y0 - lift + Math.sin(T * 1.3) * Rp * 0.09 + Math.sin(T * 2.3) * Rp * 0.03;
     drawAtom(octx, x, y, Rp, T, atom.k); atom.fx = x; atom.fy = y; atom.fR = Rp; }
