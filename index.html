@@ -1007,15 +1007,28 @@ const vremote = $("#vremote"), pip = $("#pip"), pipc = $("#pipc"), pctx = pipc.g
 const holo = { slots: [0, 1].map(() => ({ cx: 0, cy: 0, p: 0.12, seen: -1e9, fistSince: 0, want: false, k: 0 })), last: [], mf: true, lastT: 0, pipOpen: true, xT: 0, pf: 0 };
 
 /* Atomo dorato: compare aprendo la mano. Uno solo; con 2 mani aperte la distanza ne cambia la dimensione */
-const atom = { k: 0, want: false, seen: -1e9, cx: 0.5, cy: 0.5, R: 0.17, tx: 0.5, ty: 0.5, tR: 0.17, init: false };
+const atom = { k: 0, want: false, seen: -1e9, cx: 0.5, cy: 0.5, R: 0.17, tx: 0.5, ty: 0.5, tR: 0.17, init: false, lastFull: 0, flash: 0, fx: 0, fy: 0, fR: 0, wasOn: false, p: 0.12, tp: 0.12, lift: 1, tl: 1 };
 function holoUpdate(hands, now) {
   holo.last = hands.slice(0, 2);
-  const open = holo.last.filter((h) => {
+  const used = new Set(), open = [];
+  holo.last.forEach((h) => {
     const f = h.f || (h.lm && h.lm.length === 21 ? fingers(h.lm, h.ar || 0.75) : null);
-    return !!f && f.filter(Boolean).length >= 3;   // aperta o semi aperta
+    const n = f ? f.filter(Boolean).length : 0;
+    if (f && n >= 3) open.push(h);
+    if (f && n >= 4) atom.lastFull = now;
+    // pugno: scudo di energia, indipendente per ogni mano
+    let best = -1, bd = 0.35;
+    holo.slots.forEach((sl, i) => { if (used.has(i) || now - sl.seen > 300) return; const d = Math.hypot(h.cx - sl.cx, h.cy - sl.cy); if (d < bd) { bd = d; best = i; } });
+    if (best < 0) best = holo.slots.findIndex((sl, i) => !used.has(i) && now - sl.seen > 300);
+    if (best < 0) return;
+    used.add(best); const sl = holo.slots[best];
+    if (now - sl.seen > 300) { sl.fistSince = 0; sl.want = false; }
+    sl.cx = h.cx; sl.cy = h.cy; sl.p = h.p; sl.seen = now;
+    if (f && n === 0) { if (!sl.fistSince) sl.fistSince = now; sl.want = now - sl.fistSince > 120; } else { sl.fistSince = 0; sl.want = false; }
   });
-  if (!open.length) { atom.want = false; return; }
+  if (!open.length) { atom.want = false; atom.closeT = now; return; }
   atom.want = true; atom.seen = now;
+  atom.tp = open.reduce((q, h) => q + h.p, 0) / open.length; atom.tl = open.length >= 2 ? 0 : 1;
   if (open.length >= 2) {
     const [A, B] = open, ar = (vremote.videoWidth && vremote.videoHeight && state.mode === "holo") ? vremote.videoWidth / vremote.videoHeight : (vfull.videoWidth && vfull.videoHeight ? vfull.videoWidth / vfull.videoHeight : 1.33);
     atom.tx = (A.cx + B.cx) / 2; atom.ty = (A.cy + B.cy) / 2;
@@ -1024,27 +1037,39 @@ function holoUpdate(hands, now) {
   if (!atom.init || atom.k < 0.02) { atom.cx = atom.tx; atom.cy = atom.ty; atom.init = true; }
 }
 
+const ELEC = [
+  { tilt: 0.0, sp: 3.4, ph: 0.0, ry: 0.34 }, { tilt: 1.05, sp: -4.1, ph: 1.3, ry: 0.38 },
+  { tilt: -1.05, sp: 3.8, ph: 2.6, ry: 0.32 }, { tilt: 0.5, sp: -3.0, ph: 4.0, ry: 0.42 }, { tilt: -0.5, sp: 4.5, ph: 5.2, ry: 0.36 }];
+const TRAIL = 16;
 function drawAtom(c, x, y, R, t, k) {
-  const G = (a) => "rgba(255,200,70," + a + ")";
-  c.save(); c.translate(x, y); c.globalCompositeOperation = "lighter";
+  const G = (a) => "rgba(255,196,64," + a + ")";
   const e = 1 - Math.pow(1 - k, 3);
-  c.shadowColor = G(0.9); c.shadowBlur = 16;
-  const halo = c.createRadialGradient(0, 0, 0, 0, 0, R * 0.9 * e);
-  halo.addColorStop(0, G(0.35 * e)); halo.addColorStop(1, G(0)); c.fillStyle = halo; c.beginPath(); c.arc(0, 0, R * 0.9 * e, 0, TAU); c.fill();
-  const rc = R * 0.2 * e, core = c.createRadialGradient(0, 0, 0, 0, 0, rc);
-  core.addColorStop(0, "rgba(255,250,225,1)"); core.addColorStop(0.45, G(0.95)); core.addColorStop(1, G(0));
-  c.fillStyle = core; c.beginPath(); c.arc(0, 0, rc * (1 + 0.05 * Math.sin(t * 2.5)), 0, TAU); c.fill();
-  const tilts = [0, Math.PI / 3, -Math.PI / 3];
-  tilts.forEach((tl, j) => {
-    const rot = tl + t * 0.15, ca = Math.cos(rot), sa = Math.sin(rot), rx = R * e, ry = R * 0.38 * e;
-    c.strokeStyle = G(0.28 * e); c.lineWidth = 1; c.beginPath();
-    for (let i = 0; i <= 64; i++) { const a = (i / 64) * TAU, u = Math.cos(a) * rx, v = Math.sin(a) * ry; (i ? c.lineTo : c.moveTo).call(c, u * ca - v * sa, u * sa + v * ca); }
-    c.stroke();
-    const a = t * 1.1 + j * 2.1, u = Math.cos(a) * rx, v = Math.sin(a) * ry, d = Math.sin(a);   // d>0 = davanti
-    const px = u * ca - v * sa, py = u * sa + v * ca, rr = R * 0.07 * e * (1 + 0.3 * d);
-    const sg = c.createRadialGradient(px, py, 0, px, py, rr);
-    sg.addColorStop(0, "rgba(255,248,220,1)"); sg.addColorStop(0.5, G(0.9)); sg.addColorStop(1, G(0));
-    c.fillStyle = sg; c.beginPath(); c.arc(px, py, rr, 0, TAU); c.fill();
+  c.save(); c.translate(x, y); c.globalCompositeOperation = "lighter";
+  const fl = 1 + 0.04 * Math.sin(t * 9) + 0.03 * Math.sin(t * 5.3);
+  // corona
+  let rr = R * 1.0 * e, g = c.createRadialGradient(0, 0, 0, 0, 0, rr);
+  g.addColorStop(0, G(0.30 * e)); g.addColorStop(0.5, G(0.10 * e)); g.addColorStop(1, G(0));
+  c.fillStyle = g; c.beginPath(); c.arc(0, 0, rr, 0, TAU); c.fill();
+  if (k < 0.98) { c.strokeStyle = G(0.6 * (1 - k)); c.lineWidth = 2; c.beginPath(); c.arc(0, 0, R * (0.2 + 1.1 * e), 0, TAU); c.stroke(); }
+  // nucleo di plasma
+  rr = R * 0.24 * e * fl; g = c.createRadialGradient(0, 0, 0, 0, 0, rr);
+  g.addColorStop(0, "rgba(255,255,240,1)"); g.addColorStop(0.25, "rgba(255,236,160,.95)"); g.addColorStop(0.6, G(0.55)); g.addColorStop(1, G(0));
+  c.fillStyle = g; c.beginPath(); c.arc(0, 0, rr, 0, TAU); c.fill();
+  // fasci di energia: punti piccoli veloci con scia
+  ELEC.forEach((el, j) => {
+    const ca = Math.cos(el.tilt + t * 0.2), sa = Math.sin(el.tilt + t * 0.2), a = t * el.sp + el.ph;
+    const u = Math.cos(a) * R * e, v = Math.sin(a) * R * el.ry * e, d = Math.sin(a);
+    const px = u * ca - v * sa, py = u * sa + v * ca;
+    const tr = (el.tr = el.tr || []); tr.push([px, py, d]); if (tr.length > TRAIL) tr.shift();
+    c.lineCap = "round";
+    for (let i = 1; i < tr.length; i++) {
+      const f = i / tr.length;
+      c.strokeStyle = G(0.75 * f * f * e); c.lineWidth = Math.max(0.5, R * 0.028 * f);
+      c.beginPath(); c.moveTo(tr[i - 1][0], tr[i - 1][1]); c.lineTo(tr[i][0], tr[i][1]); c.stroke();
+    }
+    const r2 = R * 0.04 * e * (1 + 0.35 * d), sg = c.createRadialGradient(px, py, 0, px, py, r2 * 2.2);
+    sg.addColorStop(0, "rgba(255,255,235,1)"); sg.addColorStop(0.4, G(0.85)); sg.addColorStop(1, G(0));
+    c.fillStyle = sg; c.beginPath(); c.arc(px, py, r2 * 2.2, 0, TAU); c.fill();
   });
   c.restore();
 }
@@ -1109,10 +1134,34 @@ function holoRender(v, mirror, now) {
   clearOverlay();
   const W = ov.width, H = ov.height, m = coverMap(W, H, v, mirror);
   if (now - atom.seen > 400) atom.want = false;
-  atom.k += ((atom.want ? 1 : 0) - atom.k) * (1 - Math.exp(-dt * (atom.want ? 1.4 : 3)));   // apparizione lenta
+  if (atom.wasOn && !atom.want && atom.k > 0.15 && atom.closeT && atom.closeT - atom.lastFull < 350 && now - atom.seen < 400) { atom.flash = now; atom.k = 0; atom.wasOn = false; }   // chiusura rapida: lampo
+  if (atom.want && atom.k > 0.15) atom.wasOn = true; else if (!atom.want && atom.k < 0.02) atom.wasOn = false;
+  atom.k += ((atom.want ? 1 : 0) - atom.k) * (1 - Math.exp(-dt * (atom.want ? 1.1 : 1.6)));   // apparizione lenta
   atom.cx += (atom.tx - atom.cx) * (1 - Math.exp(-dt * 10)); atom.cy += (atom.ty - atom.cy) * (1 - Math.exp(-dt * 10));
   atom.R += (atom.tR - atom.R) * (1 - Math.exp(-dt * 6));
-  if (atom.k > 0.01) { const [x, y] = m.map({ x: atom.cx, y: atom.cy }); drawAtom(octx, x, y, atom.R * m.dh, now / 1000, atom.k); }
+  atom.p += (atom.tp - atom.p) * (1 - Math.exp(-dt * 6)); atom.lift += (atom.tl - atom.lift) * (1 - Math.exp(-dt * 5));
+  if (atom.k > 0.01) { const [x0, y0] = m.map({ x: atom.cx, y: atom.cy }), T = now / 1000, Rp = atom.R * m.dh;
+    const lift = atom.lift * (atom.p * m.dh * 1.0 + Rp * 0.9);   // sospeso sopra il palmo
+    const x = x0 + Math.sin(T * 0.9) * Rp * 0.05 + Math.sin(T * 1.7 + 1) * Rp * 0.025;
+    const y = y0 - lift + Math.sin(T * 1.3) * Rp * 0.09 + Math.sin(T * 2.3) * Rp * 0.03;
+    drawAtom(octx, x, y, Rp, T, atom.k); atom.fx = x; atom.fy = y; atom.fR = Rp; }
+  if (atom.flash) {   // lampo di energia
+    const q = (now - atom.flash) / 380;
+    if (q >= 1) atom.flash = 0; else {
+      const r = atom.fR * (0.4 + 1.6 * q), a = 1 - q;
+      octx.save(); octx.globalCompositeOperation = "lighter";
+      const g = octx.createRadialGradient(atom.fx, atom.fy, 0, atom.fx, atom.fy, r);
+      g.addColorStop(0, "rgba(255,255,240," + a + ")"); g.addColorStop(0.4, "rgba(255,200,70," + a * 0.6 + ")"); g.addColorStop(1, "rgba(255,200,70,0)");
+      octx.fillStyle = g; octx.beginPath(); octx.arc(atom.fx, atom.fy, r, 0, TAU); octx.fill();
+      octx.strokeStyle = "rgba(255,230,150," + a + ")"; octx.lineWidth = 3 * a + 1; octx.beginPath(); octx.arc(atom.fx, atom.fy, r * 1.1, 0, TAU); octx.stroke();
+      octx.restore();
+    }
+  }
+  holo.slots.forEach((sl) => {   // scudo di energia sui pugni
+    const on = now - sl.seen < 300;
+    sl.k += ((on && sl.want ? 1 : 0) - sl.k) * (1 - Math.exp(-dt * (on && sl.want ? 3.5 : 6)));
+    if (sl.k > 0.01) { const [x, y] = m.map({ x: sl.cx, y: sl.cy }); drawRings(octx, x, y, clamp(sl.p * m.dh * 1.7, 50, Math.min(W, H) * 0.55), now / 1000, sl.k); }
+  });
   drawPip(v, mirror);
 }
 function holoTickScreen(now) { holoRender(vremote, holo.mf, now); }
@@ -1245,7 +1294,7 @@ function setAppUi() {
 $("#appParticles").addEventListener("click", () => { state.app = "particles"; setAppUi(); setMode("modes"); });
 $("#appHolo").addEventListener("click", () => { state.app = "holo"; setAppUi(); setMode("modes"); });
 function enterHoloScreen() {
-  atom.k = 0; atom.want = false; atom.seen = -1e9;
+  atom.k = 0; atom.want = false; atom.seen = -1e9; atom.flash = 0; holo.slots.forEach((sl) => { sl.seen = -1e9; sl.k = 0; sl.want = false; });
   holo.last = []; holo.mf = true; vremote.style.transform = "scaleX(-1)";
   setMode("holo"); startPairing();
 }
