@@ -215,7 +215,7 @@ h1{font-weight:300;font-size:clamp(30px,5vw,40px);line-height:1.1;letter-spacing
       <button class="mode" id="appHolo" type="button">
         <span class="tag">Sopra il video</span>
         <b>Ologrammi</b>
-        <span class="d">Effetti luminosi agganciati alle mani, disegnati sopra il video della telecamera. Il primo compare chiudendo il pugno.</span>
+        <span class="d">Effetti luminosi agganciati alle mani, disegnati sopra il video della telecamera. Il primo, un atomo dorato, compare aprendo la mano.</span>
       </button>
     </div>
   </section>
@@ -1006,23 +1006,47 @@ const TAU = Math.PI * 2;
 const vremote = $("#vremote"), pip = $("#pip"), pipc = $("#pipc"), pctx = pipc.getContext("2d");
 const holo = { slots: [0, 1].map(() => ({ cx: 0, cy: 0, p: 0.12, seen: -1e9, fistSince: 0, want: false, k: 0 })), last: [], mf: true, lastT: 0, pipOpen: true, xT: 0, pf: 0 };
 
-/* Aggiorna le mani viste: il pugno chiuso (nessun dito alzato) attiva l'ologramma di quella mano */
+/* Atomo dorato: compare aprendo la mano. Uno solo; con 2 mani aperte la distanza ne cambia la dimensione */
+const atom = { k: 0, want: false, seen: -1e9, cx: 0.5, cy: 0.5, R: 0.17, tx: 0.5, ty: 0.5, tR: 0.17, init: false };
 function holoUpdate(hands, now) {
-  const list = hands.slice(0, 2); holo.last = list;
-  const used = new Set();
-  list.forEach((h) => {
+  holo.last = hands.slice(0, 2);
+  const open = holo.last.filter((h) => {
     const f = h.f || (h.lm && h.lm.length === 21 ? fingers(h.lm, h.ar || 0.75) : null);
-    const fist = !!f && !f.some(Boolean);
-    let best = -1, bd = 0.35;
-    holo.slots.forEach((s, i) => { if (used.has(i) || now - s.seen > 300) return; const d = Math.hypot(h.cx - s.cx, h.cy - s.cy); if (d < bd) { bd = d; best = i; } });
-    if (best < 0) best = holo.slots.findIndex((s, i) => !used.has(i) && now - s.seen > 300);
-    if (best < 0) return;
-    used.add(best);
-    const s = holo.slots[best];
-    if (now - s.seen > 300) { s.fistSince = 0; s.want = false; }
-    s.cx = h.cx; s.cy = h.cy; s.p = h.p; s.seen = now;
-    if (fist) { if (!s.fistSince) s.fistSince = now; s.want = now - s.fistSince > 120; } else { s.fistSince = 0; s.want = false; }
+    return !!f && f.filter(Boolean).length >= 3;   // aperta o semi aperta
   });
+  if (!open.length) { atom.want = false; return; }
+  atom.want = true; atom.seen = now;
+  if (open.length >= 2) {
+    const [A, B] = open, ar = (vremote.videoWidth && vremote.videoHeight && state.mode === "holo") ? vremote.videoWidth / vremote.videoHeight : (vfull.videoWidth && vfull.videoHeight ? vfull.videoWidth / vfull.videoHeight : 1.33);
+    atom.tx = (A.cx + B.cx) / 2; atom.ty = (A.cy + B.cy) / 2;
+    atom.tR = clamp(Math.hypot((A.cx - B.cx) * ar, A.cy - B.cy) * 0.5, 0.06, 0.8);
+  } else { atom.tx = open[0].cx; atom.ty = open[0].cy; }   // una mano: la forma resta com'è
+  if (!atom.init || atom.k < 0.02) { atom.cx = atom.tx; atom.cy = atom.ty; atom.init = true; }
+}
+
+function drawAtom(c, x, y, R, t, k) {
+  const G = (a) => "rgba(255,200,70," + a + ")";
+  c.save(); c.translate(x, y); c.globalCompositeOperation = "lighter";
+  const e = 1 - Math.pow(1 - k, 3);
+  c.shadowColor = G(0.9); c.shadowBlur = 16;
+  const halo = c.createRadialGradient(0, 0, 0, 0, 0, R * 0.9 * e);
+  halo.addColorStop(0, G(0.35 * e)); halo.addColorStop(1, G(0)); c.fillStyle = halo; c.beginPath(); c.arc(0, 0, R * 0.9 * e, 0, TAU); c.fill();
+  const rc = R * 0.2 * e, core = c.createRadialGradient(0, 0, 0, 0, 0, rc);
+  core.addColorStop(0, "rgba(255,250,225,1)"); core.addColorStop(0.45, G(0.95)); core.addColorStop(1, G(0));
+  c.fillStyle = core; c.beginPath(); c.arc(0, 0, rc * (1 + 0.05 * Math.sin(t * 2.5)), 0, TAU); c.fill();
+  const tilts = [0, Math.PI / 3, -Math.PI / 3];
+  tilts.forEach((tl, j) => {
+    const rot = tl + t * 0.15, ca = Math.cos(rot), sa = Math.sin(rot), rx = R * e, ry = R * 0.38 * e;
+    c.strokeStyle = G(0.28 * e); c.lineWidth = 1; c.beginPath();
+    for (let i = 0; i <= 64; i++) { const a = (i / 64) * TAU, u = Math.cos(a) * rx, v = Math.sin(a) * ry; (i ? c.lineTo : c.moveTo).call(c, u * ca - v * sa, u * sa + v * ca); }
+    c.stroke();
+    const a = t * 1.1 + j * 2.1, u = Math.cos(a) * rx, v = Math.sin(a) * ry, d = Math.sin(a);   // d>0 = davanti
+    const px = u * ca - v * sa, py = u * sa + v * ca, rr = R * 0.07 * e * (1 + 0.3 * d);
+    const sg = c.createRadialGradient(px, py, 0, px, py, rr);
+    sg.addColorStop(0, "rgba(255,248,220,1)"); sg.addColorStop(0.5, G(0.9)); sg.addColorStop(1, G(0));
+    c.fillStyle = sg; c.beginPath(); c.arc(px, py, rr, 0, TAU); c.fill();
+  });
+  c.restore();
 }
 
 /* Primo ologramma: "anello orbitale" (anelli con tacche, archi che ruotano, nodi orbitanti, nucleo pulsante) */
@@ -1084,14 +1108,11 @@ function holoRender(v, mirror, now) {
   const dt = Math.min(0.05, (now - (holo.lastT || now)) / 1000); holo.lastT = now;
   clearOverlay();
   const W = ov.width, H = ov.height, m = coverMap(W, H, v, mirror);
-  holo.slots.forEach((sl) => {
-    const on = now - sl.seen < 300;
-    sl.k += ((on && sl.want ? 1 : 0) - sl.k) * (1 - Math.exp(-dt * 9));
-    if (sl.k > 0.01) {
-      const [x, y] = m.map({ x: sl.cx, y: sl.cy });
-      drawRings(octx, x, y, clamp(sl.p * m.dh * 1.7, 50, Math.min(W, H) * 0.55), now / 1000, sl.k);
-    }
-  });
+  if (now - atom.seen > 400) atom.want = false;
+  atom.k += ((atom.want ? 1 : 0) - atom.k) * (1 - Math.exp(-dt * (atom.want ? 1.4 : 3)));   // apparizione lenta
+  atom.cx += (atom.tx - atom.cx) * (1 - Math.exp(-dt * 10)); atom.cy += (atom.ty - atom.cy) * (1 - Math.exp(-dt * 10));
+  atom.R += (atom.tR - atom.R) * (1 - Math.exp(-dt * 6));
+  if (atom.k > 0.01) { const [x, y] = m.map({ x: atom.cx, y: atom.cy }); drawAtom(octx, x, y, atom.R * m.dh, now / 1000, atom.k); }
   drawPip(v, mirror);
 }
 function holoTickScreen(now) { holoRender(vremote, holo.mf, now); }
@@ -1224,7 +1245,7 @@ function setAppUi() {
 $("#appParticles").addEventListener("click", () => { state.app = "particles"; setAppUi(); setMode("modes"); });
 $("#appHolo").addEventListener("click", () => { state.app = "holo"; setAppUi(); setMode("modes"); });
 function enterHoloScreen() {
-  holo.slots.forEach((sl) => { sl.seen = -1e9; sl.k = 0; sl.want = false; });
+  atom.k = 0; atom.want = false; atom.seen = -1e9;
   holo.last = []; holo.mf = true; vremote.style.transform = "scaleX(-1)";
   setMode("holo"); startPairing();
 }
