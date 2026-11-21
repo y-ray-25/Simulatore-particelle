@@ -138,6 +138,17 @@ h1{font-weight:300;font-size:clamp(30px,5vw,40px);line-height:1.1;letter-spacing
 .btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
 .actions .primary{margin-left:auto}
 
+/* Ologrammi: riquadro di tracciamento */
+.pip{position:fixed;z-index:13;right:max(16px,env(safe-area-inset-right));bottom:calc(max(16px,env(safe-area-inset-bottom)) + var(--dockh,0px));width:220px;aspect-ratio:4/3;border:1px solid var(--line-strong);border-radius:6px;overflow:hidden;background:#000;cursor:pointer}
+.pip canvas{width:100%;height:100%;display:block}
+.pip .lbl{position:absolute;right:8px;bottom:6px;font:500 10px var(--mono);letter-spacing:.12em;color:#cfe3f5;text-shadow:0 1px 2px #000}
+.pipx{position:absolute;left:6px;top:6px;width:28px;height:28px;padding:0;display:flex;align-items:center;justify-content:center;border-radius:50%;border:1px solid var(--line-strong);background:rgba(6,8,11,.85);color:var(--fg);font:17px/1 var(--sans);cursor:pointer;opacity:0;pointer-events:none;transition:opacity .15s}
+.pip:hover .pipx,.pip.showx .pipx{opacity:1;pointer-events:auto}
+.pipopen{position:fixed;z-index:13;right:max(16px,env(safe-area-inset-right));bottom:calc(max(16px,env(safe-area-inset-bottom)) + var(--dockh,0px));width:44px;height:44px;padding:0;display:flex;align-items:center;justify-content:center;background:rgba(8,11,15,.78);border:1px solid var(--line-strong);border-radius:6px;cursor:pointer;color:var(--fg)}
+.pipopen:hover{border-color:var(--accent)}
+.pipopen svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+@media (max-width:560px){.pip{width:150px}}
+
 [hidden]{display:none!important}
 @media (max-width:560px){
   .panel{padding:22px 18px 20px}
@@ -157,7 +168,18 @@ h1{font-weight:300;font-size:clamp(30px,5vw,40px);line-height:1.1;letter-spacing
 <section class="camview" id="camview" hidden>
   <video id="vfull" playsinline muted autoplay></video>
 </section>
+<section class="camview" id="remoteview" hidden>
+  <video id="vremote" playsinline muted autoplay></video>
+</section>
 <canvas id="ov"></canvas>
+<div class="pip" id="pip" hidden>
+  <canvas id="pipc" width="320" height="240"></canvas>
+  <span class="lbl">TRACCIAMENTO</span>
+  <button class="pipx" id="pipx" type="button" aria-label="Chiudi il riquadro di tracciamento">×</button>
+</div>
+<button class="pipopen" id="pipopen" type="button" aria-label="Mostra il riquadro di tracciamento" title="Mostra il tracciamento" hidden>
+  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V5h4M20 9V5h-4M4 15v4h4M20 15v4h-4"/><circle cx="12" cy="12" r="3"/></svg>
+</button>
 
 <div class="dock" id="dock" hidden>
   <div class="dline" id="dLine"><span class="dot" id="dDot"></span><span id="dText"></span></div>
@@ -178,25 +200,47 @@ h1{font-weight:300;font-size:clamp(30px,5vw,40px);line-height:1.1;letter-spacing
   </button>
 </div>
 
-<!-- Scelta della modalità -->
-<main class="menu" id="modes">
-  <section class="panel" aria-labelledby="title">
+<!-- Scelta iniziale: Particelle o Ologrammi -->
+<main class="menu" id="apps">
+  <section class="panel" aria-labelledby="titleApps">
     <p class="eyebrow">Simulatore · Tracciamento mani</p>
+    <h1 id="titleApps">Campo Particellare</h1>
+    <p class="lead">Scegli che cosa vuoi vedere sulle mani.</p>
+    <div class="modes-list">
+      <button class="mode" id="appParticles" type="button">
+        <span class="tag">Simulatore</span>
+        <b>Particelle</b>
+        <span class="d">Un campo di punti luminosi che segue le mani; anelli e forme compaiono a seconda del gesto.</span>
+      </button>
+      <button class="mode" id="appHolo" type="button">
+        <span class="tag">Sopra il video</span>
+        <b>Ologrammi</b>
+        <span class="d">Effetti luminosi agganciati alle mani, disegnati sopra il video della telecamera. Il primo compare chiudendo il pugno.</span>
+      </button>
+    </div>
+  </section>
+</main>
+
+<!-- Scelta della modalità -->
+<main class="menu" id="modes" hidden>
+  <section class="panel" aria-labelledby="title">
+    <button class="back" id="backApps" type="button">‹ Indietro</button>
+    <p class="eyebrow" id="modesEyebrow">Particelle</p>
     <h1 id="title">Campo Particellare</h1>
-    <p class="lead">Scegli come usare questo dispositivo. Servono due ruoli: una telecamera che riprende le mani e uno schermo che mostra le particelle.</p>
+    <p class="lead" id="modesLead"></p>
     <div class="modes-list">
       <button class="mode" id="modeCam" type="button">
         <span class="tag">Consigliato sul telefono</span>
         <b>Telecamera</b>
-        <span class="d">Apre la fotocamera a schermo intero, riconosce le mani e invia allo schermo solo le loro coordinate.</span>
+        <span class="d" id="modeCamD"></span>
       </button>
       <button class="mode" id="modeScreen" type="button">
         <span class="tag">Consigliato sul PC</span>
         <b>Schermo</b>
-        <span class="d">Mostra le particelle. Chiede numero di particelle e mani, poi avvia la simulazione.</span>
+        <span class="d" id="modeScreenD"></span>
       </button>
     </div>
-    <p class="note">Il video non lascia mai il telefono: lo schermo riceve soltanto le coordinate delle mani, con un collegamento diretto tra i due dispositivi.</p>
+    <p class="note" id="modesNote"></p>
   </section>
 </main>
 
@@ -269,7 +313,7 @@ h1{font-weight:300;font-size:clamp(30px,5vw,40px);line-height:1.1;letter-spacing
         <span class="code" id="pairCode">-----</span>
       </div>
     </div>
-    <p>Sul telefono apri questo indirizzo, tocca <b>Telecamera</b> e inquadra il codice QR, oppure scrivi il codice.</p>
+    <p id="pairHelp">Sul telefono apri questo indirizzo, tocca <b>Telecamera</b> e inquadra il codice QR, oppure scrivi il codice.</p>
     <span class="url" id="pairUrl"></span>
     <div class="dline" id="pairLine"><span class="dot warn" id="pairDot"></span><span id="pairText">Preparazione del collegamento…</span></div>
   </section>
@@ -320,6 +364,7 @@ const PEER_OPTS = window.CPF_PEER_OPTS || {};   // opzionale: server di segnalaz
 const isPhone = matchMedia("(pointer:coarse)").matches && Math.min(screen.width, screen.height) < 900;
 const saved = store.get("config", null);
 const state = {
+  app: "particles",   // particles | holo
   device: saved ? saved.device : (isPhone ? "phone" : "pc"),
   count: saved ? clamp(saved.count | 0, MIN_N, MAX_N) : (isPhone ? COUNTS.phone : COUNTS.pc),
   hands: saved ? (saved.hands === 2 ? 2 : 1) : 1,
@@ -746,7 +791,7 @@ const newCode = () => Array.from({ length: 5 }, () => ALPHABET[Math.floor(Math.r
 /* --- Lato schermo (PC) --- */
 const pairing = { peer: null, conn: null, code: "", connected: false, status: "idle", err: "" };
 
-function pairUrl() { return location.href.split("#")[0] + "#c=" + pairing.code; }
+function pairUrl() { return location.href.split("#")[0] + "#c=" + pairing.code + (state.app === "holo" ? "&m=h" : ""); }
 
 function renderQR() {
   const box = $("#qr"); box.textContent = "";
@@ -757,7 +802,10 @@ function renderQR() {
 }
 
 function updatePair() {
-  const show = state.mode === "sim" && state.source === "phone" && !pairing.connected;
+  const show = ((state.mode === "sim" && state.source === "phone") || state.mode === "holo") && !pairing.connected;
+  $("#pairHelp").innerHTML = state.app === "holo"
+    ? "Sul telefono apri questo indirizzo, scegli <b>Ologrammi</b> e poi <b>Telecamera</b>, quindi inquadra il codice QR oppure scrivi il codice."
+    : "Sul telefono apri questo indirizzo, tocca <b>Telecamera</b> e inquadra il codice QR, oppure scrivi il codice.";
   $("#pairwrap").hidden = !show;
   $("#pairCode").textContent = pairing.code || "-----";
   $("#pairUrl").textContent = pairing.code ? (location.protocol === "file:" ? "Per collegare il telefono pubblica la pagina su GitHub Pages: da un file locale il telefono non può raggiungerla." : pairUrl()) : "";
@@ -781,10 +829,15 @@ function startPairing() {
   peer.on("connection", (conn) => {
     if (pairing.conn && pairing.conn.open) { conn.close(); return; }
     pairing.conn = conn;
-    conn.on("open", () => { pairing.connected = true; try { conn.send({ t: "hello", hands: state.hands }); } catch (e) { /* ignora */ } updatePair(); });
+    conn.on("open", () => { pairing.connected = true; try { conn.send({ t: "hello", hands: state.app === "holo" ? 2 : state.hands }); } catch (e) { /* ignora */ } updatePair(); });
     conn.on("data", onRemoteData);
     conn.on("close", () => { if (pairing.conn === conn) { pairing.conn = null; pairing.connected = false; updatePair(); } });
     conn.on("error", () => { if (pairing.conn === conn) { pairing.conn = null; pairing.connected = false; updatePair(); } });
+  });
+  peer.on("call", (call) => {   // video in arrivo dal telefono (solo Ologrammi)
+    if (state.mode !== "holo") { try { call.close(); } catch (e) { /* ignora */ } return; }
+    call.answer();
+    call.on("stream", (st) => { vremote.srcObject = st; vremote.play().catch(() => {}); });
   });
   peer.on("disconnected", () => { try { if (!peer.destroyed) peer.reconnect(); } catch (e) { /* ignora */ } });
   peer.on("error", (err) => {
@@ -804,7 +857,13 @@ function stopPairing() {
   try { peer && peer.destroy(); } catch (e) { /* ignora */ }
 }
 function onRemoteData(msg) {
-  if (state.mode !== "sim" || !msg || msg.t !== "h" || !Array.isArray(msg.h)) return;
+  if (!msg || msg.t !== "h" || !Array.isArray(msg.h)) return;
+  if (state.mode === "holo") {
+    holo.mf = msg.mf !== 0; vremote.style.transform = holo.mf ? "scaleX(-1)" : "none";
+    holoUpdate(msg.h.slice(0, 2).map(unpack), performance.now());
+    return;
+  }
+  if (state.mode !== "sim") return;
   processHands(msg.h.slice(0, 2).map(unpack), performance.now());
 }
 
@@ -829,6 +888,7 @@ function dockUpdate() {
   $("#dForm").hidden = connected || !!cam.camErr;
   $("#dDisc").hidden = !connected;
   $("#dRetry").hidden = !cam.camErr;
+  document.documentElement.style.setProperty("--dockh", ($("#dock").hidden ? 0 : $("#dock").offsetHeight + 12) + "px");
 }
 
 async function startCamStream() {
@@ -838,6 +898,7 @@ async function startCamStream() {
     cam.stream = await openStream(vfull, cam.facing);
     vfull.style.transform = cam.facing === "user" ? "scaleX(-1)" : "none";
     cam.lastVT = -1;
+    if (cam.link === "connected" && state.app === "holo" && cam.peer) startCall(cam.peer, cam.code);
   } catch (e) { console.error(e); cam.camErr = describeError(e); }
   dockUpdate();
 }
@@ -849,15 +910,22 @@ async function enterCamera(code) {
   try { navigator.wakeLock && navigator.wakeLock.request("screen").then((w) => { cam.wake = w; }).catch(() => {}); } catch (e) { /* ignora */ }
   if ("BarcodeDetector" in window) { try { cam.detector = new BarcodeDetector({ formats: ["qr_code"] }); } catch (e) { cam.detector = null; } }
   const streamP = startCamStream();
-  ensureLandmarker(1).then(() => { cam.modelReady = true; dockUpdate(); }).catch((e) => { console.error(e); cam.modelErr = describeError(e); dockUpdate(); });
+  ensureLandmarker(state.app === "holo" ? 2 : 1).then(() => { cam.modelReady = true; dockUpdate(); }).catch((e) => { console.error(e); cam.modelErr = describeError(e); dockUpdate(); });
   if (code) connectTo(code);
   await streamP;
+}
+
+function startCall(peer, code) {   // invia il video della fotocamera allo schermo (Ologrammi)
+  try { cam.call && cam.call.close(); } catch (e) { /* ignora */ }
+  try { cam.call = peer.call("cpf-" + code, cam.stream); } catch (e) { console.error(e); }
 }
 
 function disconnectCam() {
   clearTimeout(cam.retryT);
   const { peer, conn } = cam;
   cam.peer = null; cam.conn = null;
+  try { cam.call && cam.call.close(); } catch (e) { /* ignora */ }
+  cam.call = null;
   try { conn && conn.close(); } catch (e) { /* ignora */ }
   try { peer && peer.destroy(); } catch (e) { /* ignora */ }
 }
@@ -873,7 +941,7 @@ function connectTo(raw) {
   peer.on("open", () => {
     if (cam.peer !== peer) return;
     const conn = cam.conn = peer.connect("cpf-" + code, { serialization: "json", reliable: false });
-    conn.on("open", () => { if (cam.conn === conn) { cam.link = "connected"; dockUpdate(); } });
+    conn.on("open", () => { if (cam.conn === conn) { cam.link = "connected"; dockUpdate(); if (state.app === "holo" && cam.stream) startCall(peer, code); } });
     conn.on("data", (m) => {
       if (m && m.t === "hello" && mp.lmk) mp.lmk.setOptions({ numHands: m.hands === 2 ? 2 : 1 }).catch(() => {});
     });
@@ -901,17 +969,21 @@ function leaveCamera() {
 /* Ciclo della telecamera: rileva, disegna lo scheletro, invia */
 function camTick(now) {
   if (cam.camErr) return;
+  if (state.app === "holo") holoRender(vfull, cam.facing === "user", now);
   if (mp.lmk && cam.modelReady && vfull.readyState >= 2 && vfull.currentTime !== cam.lastVT) {
     cam.lastVT = vfull.currentTime;
     let hands = [];
     try { hands = extract(mp.lmk.detectForVideo(vfull, performance.now()), (vfull.videoWidth / vfull.videoHeight) || 0.75); }
     catch (e) { console.error(e); }
     cam.n = hands.length; cam.pose = hands.length ? hands[0].g : "o";
+    if (state.app === "holo") holoUpdate(hands, now);
+    else {
     clearOverlay();
     const W = ov.width, H = ov.height, vw = vfull.videoWidth || 1, vh = vfull.videoHeight || 1;
     const s = Math.max(W / vw, H / vh), dw = vw * s, dh = vh * s, ox = (W - dw) / 2, oy = (H - dh) / 2, front = cam.facing === "user";
     drawHands(hands, (p) => { const px = ox + p.x * dw; return [front ? W - px : px, oy + p.y * dh]; });
-    if (cam.conn && cam.conn.open) { try { cam.conn.send({ t: "h", h: hands.map(pack) }); } catch (e) { /* ignora */ } }
+    }
+    if (cam.conn && cam.conn.open) { try { cam.conn.send({ t: "h", mf: cam.facing === "user" ? 1 : 0, h: hands.map(pack) }); } catch (e) { /* ignora */ } }
   }
   if (now - cam.dockT > 400) { cam.dockT = now; if (cam.link === "connected") dockUpdate(); }
   if (cam.detector && cam.link !== "connected" && cam.link !== "connecting" && now - cam.lastScan > 500 && vfull.readyState >= 2) {
@@ -927,6 +999,103 @@ function camTick(now) {
 /* ====================================================================
    Puntatore come mano di riserva (se nessuna sorgente è attiva)
    ==================================================================== */
+/* ====================================================================
+   Ologrammi: effetti luminosi sopra il video, agganciati alle mani
+   ==================================================================== */
+const TAU = Math.PI * 2;
+const vremote = $("#vremote"), pip = $("#pip"), pipc = $("#pipc"), pctx = pipc.getContext("2d");
+const holo = { slots: [0, 1].map(() => ({ cx: 0, cy: 0, p: 0.12, seen: -1e9, fistSince: 0, want: false, k: 0 })), last: [], mf: true, lastT: 0, pipOpen: true, xT: 0, pf: 0 };
+
+/* Aggiorna le mani viste: il pugno chiuso (nessun dito alzato) attiva l'ologramma di quella mano */
+function holoUpdate(hands, now) {
+  const list = hands.slice(0, 2); holo.last = list;
+  const used = new Set();
+  list.forEach((h) => {
+    const f = h.f || (h.lm && h.lm.length === 21 ? fingers(h.lm, h.ar || 0.75) : null);
+    const fist = !!f && !f.some(Boolean);
+    let best = -1, bd = 0.35;
+    holo.slots.forEach((s, i) => { if (used.has(i) || now - s.seen > 300) return; const d = Math.hypot(h.cx - s.cx, h.cy - s.cy); if (d < bd) { bd = d; best = i; } });
+    if (best < 0) best = holo.slots.findIndex((s, i) => !used.has(i) && now - s.seen > 300);
+    if (best < 0) return;
+    used.add(best);
+    const s = holo.slots[best];
+    if (now - s.seen > 300) { s.fistSince = 0; s.want = false; }
+    s.cx = h.cx; s.cy = h.cy; s.p = h.p; s.seen = now;
+    if (fist) { if (!s.fistSince) s.fistSince = now; s.want = now - s.fistSince > 120; } else { s.fistSince = 0; s.want = false; }
+  });
+}
+
+/* Primo ologramma: "anello orbitale" (anelli con tacche, archi che ruotano, nodi orbitanti, nucleo pulsante) */
+function drawRings(c, x, y, R, t, k) {
+  c.save(); c.translate(x, y); c.globalCompositeOperation = "lighter"; c.globalAlpha = Math.min(1, k);
+  const sc = 0.55 + 0.45 * k; c.scale(sc, sc);
+  c.lineCap = "round"; c.shadowColor = "rgba(121,192,255,.95)"; c.shadowBlur = 14;
+  const g = c.createRadialGradient(0, 0, 0, 0, 0, R);
+  g.addColorStop(0, "rgba(121,192,255,.30)"); g.addColorStop(0.6, "rgba(121,192,255,.08)"); g.addColorStop(1, "rgba(121,192,255,0)");
+  c.fillStyle = g; c.beginPath(); c.arc(0, 0, R, 0, TAU); c.fill();
+  c.strokeStyle = "rgba(190,225,255,.92)"; c.lineWidth = 2; c.beginPath(); c.arc(0, 0, R, 0, TAU); c.stroke();
+  c.save(); c.rotate(t * 0.25); c.lineWidth = 1.5;
+  for (let i = 0; i < 60; i++) {
+    const a = (i / 60) * TAU, l = i % 5 === 0 ? 0.09 : 0.045, ca = Math.cos(a), sa = Math.sin(a);
+    c.beginPath(); c.moveTo(ca * R * 0.94, sa * R * 0.94); c.lineTo(ca * R * (0.94 - l), sa * R * (0.94 - l)); c.stroke();
+  }
+  c.restore();
+  c.save(); c.rotate(-t * 0.6); c.setLineDash([R * 0.12, R * 0.07]); c.lineWidth = 3; c.beginPath(); c.arc(0, 0, R * 0.76, 0, TAU); c.stroke(); c.restore();
+  c.save(); c.rotate(t * 0.9); c.lineWidth = 5;
+  for (let i = 0; i < 3; i++) { c.beginPath(); c.arc(0, 0, R * 0.6, (i * TAU) / 3, (i * TAU) / 3 + 0.9); c.stroke(); }
+  c.restore();
+  c.lineWidth = 1.2; c.beginPath(); c.arc(0, 0, R * 0.42, 0, TAU); c.stroke();
+  c.fillStyle = "rgba(230,245,255,.95)";
+  for (let i = 0; i < 3; i++) { const a = t * 1.6 + (i * TAU) / 3; c.beginPath(); c.arc(Math.cos(a) * R * 0.42, Math.sin(a) * R * 0.42, R * 0.025, 0, TAU); c.fill(); }
+  c.lineWidth = 2; c.beginPath(); c.arc(0, 0, R * (0.10 + 0.02 * Math.sin(t * 3)), 0, TAU); c.stroke();
+  c.beginPath(); c.arc(0, 0, R * 0.035, 0, TAU); c.fillStyle = "#fff"; c.fill();
+  c.restore();
+}
+
+function coverMap(W, H, v, mirror) {
+  const vw = v.videoWidth || 4, vh = v.videoHeight || 3;
+  const s = Math.max(W / vw, H / vh), dw = vw * s, dh = vh * s, ox = (W - dw) / 2, oy = (H - dh) / 2;
+  return { dw, dh, ox, oy, map: (p) => { const px = ox + p.x * dw; return [mirror ? W - px : px, oy + p.y * dh]; } };
+}
+function drawBones(c, hands, map) {
+  if (!hands || !hands.length) return;
+  c.strokeStyle = "rgba(121,192,255,.85)"; c.lineWidth = 1.5; c.beginPath();
+  hands.forEach((h) => { if (!h.lm || h.lm.length < 21) return; BONES.forEach(([a, b]) => { const A = map(h.lm[a]), B = map(h.lm[b]); c.moveTo(A[0], A[1]); c.lineTo(B[0], B[1]); }); });
+  c.stroke(); c.fillStyle = "#e8f4ff";
+  hands.forEach((h) => (h.lm || []).forEach((q) => { const A = map(q); c.beginPath(); c.arc(A[0], A[1], 2, 0, TAU); c.fill(); }));
+}
+function drawPip(v, mirror) {
+  if (pip.hidden || (holo.pf++ & 1)) return;
+  const W = pipc.width, H = pipc.height, m = coverMap(W, H, v, mirror);
+  pctx.save(); pctx.fillStyle = "#000"; pctx.fillRect(0, 0, W, H);
+  if (v.readyState >= 2) { if (mirror) { pctx.translate(W, 0); pctx.scale(-1, 1); } pctx.drawImage(v, m.ox, m.oy, m.dw, m.dh); }
+  pctx.restore();
+  drawBones(pctx, holo.last, m.map);
+}
+function holoRender(v, mirror, now) {
+  const dt = Math.min(0.05, (now - (holo.lastT || now)) / 1000); holo.lastT = now;
+  clearOverlay();
+  const W = ov.width, H = ov.height, m = coverMap(W, H, v, mirror);
+  holo.slots.forEach((sl) => {
+    const on = now - sl.seen < 300;
+    sl.k += ((on && sl.want ? 1 : 0) - sl.k) * (1 - Math.exp(-dt * 9));
+    if (sl.k > 0.01) {
+      const [x, y] = m.map({ x: sl.cx, y: sl.cy });
+      drawRings(octx, x, y, clamp(sl.p * m.dh * 1.7, 50, Math.min(W, H) * 0.55), now / 1000, sl.k);
+    }
+  });
+  drawPip(v, mirror);
+}
+function holoTickScreen(now) { holoRender(vremote, holo.mf, now); }
+
+function setPip() {
+  const act = (state.mode === "camera" || state.mode === "holo") && state.app === "holo";
+  pip.hidden = !(act && holo.pipOpen); $("#pipopen").hidden = !(act && !holo.pipOpen);
+}
+$("#pipx").addEventListener("click", (e) => { e.stopPropagation(); holo.pipOpen = false; pip.classList.remove("showx"); setPip(); });
+$("#pipopen").addEventListener("click", () => { holo.pipOpen = true; setPip(); });
+pip.addEventListener("click", () => { pip.classList.add("showx"); clearTimeout(holo.xT); holo.xT = setTimeout(() => pip.classList.remove("showx"), 3000); });
+
 const mouse = { inside: false, down: false, x: 0, y: 0, pose: "o" };
 addEventListener("keydown", (e) => { if (state.mode === "sim" && !e.repeat) { if (e.key === "1") mouse.pose = "p"; else if (e.key === "2") mouse.pose = "r"; else if (e.key === "0") mouse.pose = "o"; } });
 const glCanvas = $("#gl");
@@ -954,6 +1123,7 @@ function frame() {
   const raw = (now - last) / 1000, dt = Math.min(0.033, raw || 0.016); last = now;
 
   if (state.mode === "camera") { camTick(now); return; }
+  if (state.mode === "holo") { holoTickScreen(now); return; }
 
   let external = false;
   if (state.mode === "sim") {
@@ -1005,27 +1175,57 @@ function frame() {
 const btnMenu = $("#btnMenu");
 function setMode(m) {
   state.mode = m;
+  $("#apps").hidden = m !== "apps";
   $("#modes").hidden = m !== "modes";
+  $("#remoteview").hidden = m !== "holo";
   $("#menu").hidden = m !== "menu";
   $("#camview").hidden = m !== "camera";
   $("#dock").hidden = m !== "camera";
-  glCanvas.style.visibility = m === "camera" ? "hidden" : "visible";
+  glCanvas.style.visibility = (m === "camera" || m === "holo") ? "hidden" : "visible";
   $("#hud").hidden = m !== "sim";
   $("#legend").hidden = m !== "sim";
   $("#cam").hidden = !(m === "sim" && state.source === "local");
-  btnMenu.hidden = !(m === "sim" || m === "camera");
-  btnMenu.textContent = m === "camera" ? "Esci" : "Menu";
+  btnMenu.hidden = !(m === "sim" || m === "camera" || m === "holo");
+  btnMenu.textContent = m === "sim" ? "Menu" : "Esci";
   $("#btnFlip").hidden = m !== "camera";
   updatePair();
-  if (m !== "camera") clearOverlay();
+  if (m !== "camera" && m !== "holo") clearOverlay();
+  setPip();
 }
 
 $("#modeCam").addEventListener("click", () => enterCamera(null));
-$("#modeScreen").addEventListener("click", () => setMode("menu"));
+$("#modeScreen").addEventListener("click", () => { if (state.app === "holo") enterHoloScreen(); else setMode("menu"); });
+$("#backApps").addEventListener("click", () => setMode("apps"));
+function setAppUi() {
+  const h = state.app === "holo";
+  $("#title").textContent = h ? "Ologrammi" : "Campo Particellare";
+  $("#modesEyebrow").textContent = h ? "Ologrammi" : "Particelle";
+  $("#modesLead").textContent = h
+    ? "Scegli come usare questo dispositivo. Una telecamera riprende le mani e uno schermo mostra il video con gli ologrammi sopra."
+    : "Scegli come usare questo dispositivo. Servono due ruoli: una telecamera che riprende le mani e uno schermo che mostra le particelle.";
+  $("#modeCamD").textContent = h
+    ? "Apre la fotocamera di questo dispositivo a schermo intero, con gli ologrammi sulle mani. Se è collegata a uno schermo, gli invia anche il video."
+    : "Apre la fotocamera a schermo intero, riconosce le mani e invia allo schermo solo le loro coordinate.";
+  $("#modeScreenD").textContent = h
+    ? "Mostra il video della telecamera del telefono con gli ologrammi sulle mani. Compare un codice QR da inquadrare con il telefono."
+    : "Mostra le particelle. Chiede numero di particelle e mani, poi avvia la simulazione.";
+  $("#modesNote").textContent = h
+    ? "Con gli ologrammi il video della telecamera passa dal telefono al PC con un collegamento diretto tra i due dispositivi."
+    : "Il video non lascia mai il telefono: lo schermo riceve soltanto le coordinate delle mani, con un collegamento diretto tra i due dispositivi.";
+}
+$("#appParticles").addEventListener("click", () => { state.app = "particles"; setAppUi(); setMode("modes"); });
+$("#appHolo").addEventListener("click", () => { state.app = "holo"; setAppUi(); setMode("modes"); });
+function enterHoloScreen() {
+  holo.slots.forEach((sl) => { sl.seen = -1e9; sl.k = 0; sl.want = false; });
+  holo.last = []; holo.mf = true; vremote.style.transform = "scaleX(-1)";
+  setMode("holo"); startPairing();
+}
+function stopHoloScreen() { stopPairing(); vremote.srcObject = null; clearOverlay(); }
 $("#backModes").addEventListener("click", () => setMode("modes"));
 
 btnMenu.addEventListener("click", () => {
   if (state.mode === "camera") { leaveCamera(); setMode("modes"); }
+  else if (state.mode === "holo") { stopHoloScreen(); setMode("modes"); }
   else if (state.mode === "sim") { stopSim(); setMode("menu"); }
 });
 $("#btnFlip").addEventListener("click", async () => {
@@ -1150,12 +1350,13 @@ $("#reset").addEventListener("click", () => { Object.assign(settings, DEFAULTS);
    Avvio
    ==================================================================== */
 applySettings();
-setMode("modes");
+setAppUi();
+setMode("apps");
 requestAnimationFrame(frame);
 {
   // Un indirizzo con #c=CODICE (dal QR) apre subito la modalità Telecamera e si collega.
   const m = location.hash.match(/c=([A-Za-z0-9]{5})\b/);
-  if (m) enterCamera(m[1].toUpperCase());
+  if (m) { if (/m=h\b/.test(location.hash)) { state.app = "holo"; setAppUi(); } enterCamera(m[1].toUpperCase()); }
 }
 </script>
 </body>
